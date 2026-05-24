@@ -12,10 +12,11 @@ export interface BreathPattern {
 }
 
 export const BREATH_PATTERNS: BreathPattern[] = [
-  { name: "4-7-8 Recovery", inhale: 4, hold: 7, exhale: 8, rest: 0, description: "Autonomic nervous system reset" },
-  { name: "Box Breathing",   inhale: 4, hold: 4, exhale: 4, rest: 4, description: "Performance centering" },
-  { name: "Resonant Coher",  inhale: 5, hold: 0, exhale: 5, rest: 0, description: "Heart rate variability alignment" },
-  { name: "Cleansing Sigh",  inhale: 4, hold: 2, exhale: 6, rest: 0, description: "Immediate cortisol release" },
+  { name: "4-7-8 Recovery",   inhale: 4, hold: 7, exhale: 8, rest: 0, description: "Autonomic nervous system reset" },
+  { name: "Box Breathing",    inhale: 4, hold: 4, exhale: 4, rest: 4, description: "Performance centering" },
+  { name: "Resonant Coherent",inhale: 5, hold: 0, exhale: 5, rest: 0, description: "HRV alignment" },
+  { name: "Deep Recovery",    inhale: 6, hold: 2, exhale: 8, rest: 0, description: "Nervous system depth" },
+  { name: "Cleansing Sigh",   inhale: 4, hold: 2, exhale: 6, rest: 0, description: "Immediate cortisol release" },
 ];
 
 export interface BreathState {
