@@ -1,726 +1,1002 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Leaf, Wind, Timer, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { X } from "lucide-react";
 
 import { useOS } from "@/lib/os-store";
-import { MountainBackground } from "./recovery/MountainBackground";
-import { RecoveryOrb } from "./recovery/RecoveryOrb";
-import { AmbientAudioPanel } from "./recovery/AmbientAudioPanel";
-import { RecoveryInsights } from "./recovery/RecoveryInsights";
-import { RecoveryProgress } from "./recovery/RecoveryProgress";
-import { useBreathingEngine, BREATH_PATTERNS } from "./recovery/BreathingEngine";
-import { useAmbientAudio, type AmbientSound } from "./recovery/useAmbientAudio";
+import { useBreathingEngine, BREATH_PATTERNS, type BreathPhase } from "./recovery/BreathingEngine";
+import { useAmbientAudio, AMBIENT_PRESETS, type AmbientSound } from "./recovery/useAmbientAudio";
 
-/* ─── LocalStorage persistence ────────────────────────────────────────────── */
-const RECOVERY_SESSION_KEY = "routineos_recovery_session";
-const RECOVERY_STREAK_KEY  = "routineos_recovery_streak";
+/* ─────────────────────────────────────────────────────────────
+   Palette — Mountain lake at 3am
+   ───────────────────────────────────────────────────────────── */
+const PAL = {
+  void:    "#050810",
+  water:   "#030810",
+  blue:    "#4a8fc4",
+  blueHi:  "rgba(100,170,240,0.95)",
+  mist:    "rgba(200,225,255,0.85)",
+  text:    "rgba(220,235,255,0.92)",
+  textDim: "rgba(180,205,235,0.55)",
+  textMut: "rgba(140,170,210,0.40)",
+  hair:    "rgba(100,140,200,0.06)",
+  hair2:   "rgba(100,140,200,0.10)",
+};
 
-interface PersistedRecoverySession {
-  startAt:    number;
-  duration:   number;
-  status:     "running" | "paused";
-  pausedAt:   number;
-  patternIdx: number;
-}
+const FONT_DISPLAY = `var(--font-sanctuary-display), "Cormorant Garamond", Georgia, serif`;
+const FONT_UI      = `var(--font-sanctuary-ui), "DM Sans", ui-sans-serif, system-ui`;
 
-function safeGet<T>(key: string): T | null {
-  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; }
-  catch { return null; }
-}
-function safeSet(key: string, val: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* noop */ }
-}
-function safeRemove(key: string) {
-  try { localStorage.removeItem(key); } catch { /* noop */ }
-}
-
-/* ─── Session timer hook (Drift-free requestAnimationFrame-aligned Clock) ── */
-function useRecoverySession() {
-  const [status, setStatus] = useState<"idle" | "running" | "paused" | "complete">("idle");
-  const [seconds, setSeconds] = useState(0);
-  const [duration, setDuration] = useState(20 * 60); // 20 min default
-
-  const startAtRef  = useRef(0);
-  const pausedAtRef = useRef(0);
-  const durRef      = useRef(duration);
-  const statusRef   = useRef<typeof status>("idle");
-  const rafRef      = useRef<number>(0);
-  const lastTickRef = useRef<number>(0);
-
-  useEffect(() => { durRef.current = duration; }, [duration]);
-
-  const stopTicker = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-  }, []);
-
-  const startTicker = useCallback(() => {
-    stopTicker();
-    lastTickRef.current = Date.now();
-
-    const tick = () => {
-      if (statusRef.current !== "running") return;
-      const now = Date.now();
-      const elapsed = (now - startAtRef.current) / 1000;
-      const remaining = durRef.current - elapsed;
-
-      if (remaining <= 0) {
-        stopTicker();
-        setSeconds(0);
-        statusRef.current = "complete";
-        setStatus("complete");
-        safeRemove(RECOVERY_SESSION_KEY);
-        
-        // Update streak
-        const today = new Date().toDateString();
-        const streak = safeGet<{ date: string; count: number }>(RECOVERY_STREAK_KEY);
-        if (!streak || streak.date !== today) {
-          safeSet(RECOVERY_STREAK_KEY, { date: today, count: (streak?.count ?? 0) + 1 });
-        }
-        return;
-      }
-
-      setSeconds(Math.round(remaining));
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-  }, [stopTicker]);
-
-  useEffect(() => () => stopTicker(), [stopTicker]);
-
-  const start = useCallback((durationMins: number, patternIdx: number) => {
-    const secs = durationMins * 60;
-    const now = Date.now();
-    durRef.current = secs;
-    startAtRef.current = now;
-    pausedAtRef.current = 0;
-    statusRef.current = "running";
-
-    setDuration(secs);
-    setSeconds(secs);
-    setStatus("running");
-
-    safeSet(RECOVERY_SESSION_KEY, {
-      startAt: now, duration: secs, status: "running", pausedAt: 0, patternIdx,
-    } satisfies PersistedRecoverySession);
-
-    startTicker();
-  }, [startTicker]);
-
-  const pause = useCallback(() => {
-    if (statusRef.current !== "running") return;
-    stopTicker();
-    pausedAtRef.current = Date.now();
-    statusRef.current = "paused";
-    setStatus("paused");
-
-    const raw = safeGet<PersistedRecoverySession>(RECOVERY_SESSION_KEY);
-    if (raw) safeSet(RECOVERY_SESSION_KEY, { ...raw, status: "paused", pausedAt: pausedAtRef.current });
-  }, [stopTicker]);
-
-  const resume = useCallback(() => {
-    if (statusRef.current !== "paused") return;
-    const diff = Date.now() - pausedAtRef.current;
-    startAtRef.current += diff;
-    pausedAtRef.current = 0;
-    statusRef.current = "running";
-    setStatus("running");
-
-    const raw = safeGet<PersistedRecoverySession>(RECOVERY_SESSION_KEY);
-    if (raw) safeSet(RECOVERY_SESSION_KEY, { ...raw, status: "running", startAt: startAtRef.current, pausedAt: 0 });
-
-    startTicker();
-  }, [startTicker]);
-
-  const end = useCallback((cancel = false) => {
-    stopTicker();
-    safeRemove(RECOVERY_SESSION_KEY);
-    statusRef.current = "idle";
-    setStatus("idle");
-    setSeconds(0);
-    if (!cancel) {
-      const today = new Date().toDateString();
-      const streak = safeGet<{ date: string; count: number }>(RECOVERY_STREAK_KEY);
-      if (!streak || streak.date !== today) {
-        safeSet(RECOVERY_STREAK_KEY, { date: today, count: (streak?.count ?? 0) + 1 });
-      }
-    }
-  }, [stopTicker]);
-
-  // Restore session from localStorage on mount
-  useEffect(() => {
-    const saved = safeGet<PersistedRecoverySession>(RECOVERY_SESSION_KEY);
-    if (!saved || !saved.startAt || !saved.duration) return;
-
-    let remaining: number;
-    if (saved.status === "paused") {
-      remaining = saved.duration - (saved.pausedAt - saved.startAt) / 1000;
-    } else {
-      remaining = saved.duration - (Date.now() - saved.startAt) / 1000;
-    }
-    if (remaining <= 0) { safeRemove(RECOVERY_SESSION_KEY); return; }
-
-    durRef.current = saved.duration;
-    startAtRef.current = saved.startAt;
-    pausedAtRef.current = saved.pausedAt;
-    statusRef.current = saved.status;
-
-    setDuration(saved.duration);
-    setSeconds(Math.round(remaining));
-    setStatus(saved.status);
-
-    if (saved.status === "running") startTicker();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const streak = (() => {
-    const s = safeGet<{ date: string; count: number }>(RECOVERY_STREAK_KEY);
-    return s?.count ?? 0;
-  })();
-
-  return { status, seconds, duration, streak, start, pause, resume, end };
-}
-
-/* ─── Volumetric Canvas Organic Particle system ───────────────────────────── */
-interface ParticlesProps {
+/* ─────────────────────────────────────────────────────────────
+   Canvas Environment — moon, fog bands, water, particles
+   ───────────────────────────────────────────────────────────── */
+interface EnvProps {
+  orbScale: number;        // 0.55 .. 1.0
+  phase: BreathPhase;
   active: boolean;
-  breathPhase: string;
-  breathProgress: number;
-  sessionProgress: number;
 }
-
-function RecoveryParticles({ active, breathPhase, breathProgress, sessionProgress }: ParticlesProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef    = useRef<number>(0);
+function RecoveryEnvironment({ orbScale, phase, active }: EnvProps) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const stateRef = useRef({ orbScale, phase, active });
+  useEffect(() => { stateRef.current = { orbScale, phase, active }; }, [orbScale, phase, active]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const resize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; };
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let W = 0, H = 0;
+    const resize = () => {
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
-    const pts = Array.from({ length: 42 }, () => ({
-      x:     Math.random() * canvas.width,
-      y:     Math.random() * canvas.height * 0.75,
-      r:     Math.random() * 1.2 + 0.3,
-      dx:    (Math.random() - 0.5) * 0.08,
-      dy:    (Math.random() - 0.5) * 0.08,
-      a:     Math.random() * 0.3 + 0.05,
-      phase: Math.random() * Math.PI * 2,
+    // Stars (static positions, twinkle)
+    const stars = Array.from({ length: 90 }, () => ({
+      x: Math.random(),
+      y: Math.random() * 0.55,
+      r: Math.random() * 1.1 + 0.2,
+      a: Math.random() * 0.6 + 0.2,
+      p: Math.random() * Math.PI * 2,
     }));
 
-    let t = 0;
-    const draw = () => {
-      t += 0.005;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const eff = active ? 1 : 0.18;
-      
-      // Speed reacts directly to breathing phase progress
-      let speedMod = 1.0;
-      if (breathPhase === "inhale") {
-        speedMod = 1.0 + breathProgress * 0.8;
-      } else if (breathPhase === "exhale") {
-        speedMod = 1.0 - breathProgress * 0.5;
-      } else if (breathPhase === "hold") {
-        speedMod = 0.4;
+    // Rising particles
+    const parts = Array.from({ length: 60 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      vy: 0.00018 + Math.random() * 0.00035,
+      r: Math.random() * 1.4 + 0.3,
+      a: Math.random() * 0.35 + 0.08,
+      p: Math.random() * Math.PI * 2,
+    }));
+
+    // Fog bands
+    const fogBands = [
+      { y: 0.58, h: 0.18, speed: 0.000020, off: 0,     alpha: 0.10 },
+      { y: 0.62, h: 0.22, speed: 0.000035, off: 200,   alpha: 0.08 },
+      { y: 0.66, h: 0.16, speed: 0.000055, off: 400,   alpha: 0.07 },
+      { y: 0.70, h: 0.14, speed: 0.000080, off: 600,   alpha: 0.06 },
+    ];
+
+    let raf = 0;
+    let t0 = performance.now();
+
+    const draw = (now: number) => {
+      const t = now;
+      const dt = now - t0; t0 = now;
+      const { orbScale: os, phase: ph, active: ac } = stateRef.current;
+
+      // Sky gradient (subtly lighter on inhale)
+      const lift = ph === "inhale" ? (os - 0.55) / 0.45 : 0;
+      const skyTop    = `rgba(5, 8, 16, 1)`;
+      const skyMid    = `rgba(${8 + lift * 6}, ${12 + lift * 8}, ${24 + lift * 10}, 1)`;
+      const skyHorizon= `rgba(${20 + lift * 14}, ${36 + lift * 16}, ${64 + lift * 20}, 1)`;
+
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, skyTop);
+      g.addColorStop(0.45, skyMid);
+      g.addColorStop(0.72, skyHorizon);
+      g.addColorStop(0.78, "#040a14");
+      g.addColorStop(1, PAL.water);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
+      // Moon glow
+      const cx = W * 0.62, cy = H * 0.22;
+      const moonR = Math.min(W, H) * 0.42;
+      const mg = ctx.createRadialGradient(cx, cy, 0, cx, cy, moonR);
+      const moonA = 0.18 + lift * 0.10;
+      mg.addColorStop(0, `rgba(180,210,255,${moonA})`);
+      mg.addColorStop(0.25, `rgba(120,170,230,${moonA * 0.55})`);
+      mg.addColorStop(0.6, `rgba(70,120,200,${moonA * 0.18})`);
+      mg.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = mg;
+      ctx.fillRect(0, 0, W, H);
+
+      // Moon disk
+      const diskR = Math.min(W, H) * 0.045;
+      const dg = ctx.createRadialGradient(cx - diskR * 0.25, cy - diskR * 0.25, 0, cx, cy, diskR);
+      dg.addColorStop(0, "rgba(245,250,255,0.95)");
+      dg.addColorStop(0.6, "rgba(200,220,245,0.55)");
+      dg.addColorStop(1, "rgba(160,190,230,0)");
+      ctx.fillStyle = dg;
+      ctx.beginPath(); ctx.arc(cx, cy, diskR, 0, Math.PI * 2); ctx.fill();
+
+      // Stars
+      for (const s of stars) {
+        const tw = 0.5 + 0.5 * Math.sin(t * 0.0008 + s.p);
+        ctx.fillStyle = `rgba(220,235,255,${s.a * tw * (ac ? 1 : 0.7)})`;
+        ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2); ctx.fill();
       }
 
-      // Calm organic deceleration as recovery session approaches completion
-      const calmFactor = Math.max(0.2, 1.0 - sessionProgress * 0.7);
+      // Mountain silhouettes (3 layers, parallax-ish via static path)
+      // Far range
+      ctx.fillStyle = "rgba(18,30,55,0.85)";
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.62);
+      ctx.lineTo(W * 0.10, H * 0.55);
+      ctx.lineTo(W * 0.22, H * 0.60);
+      ctx.lineTo(W * 0.34, H * 0.50);
+      ctx.lineTo(W * 0.46, H * 0.58);
+      ctx.lineTo(W * 0.58, H * 0.48);
+      ctx.lineTo(W * 0.70, H * 0.56);
+      ctx.lineTo(W * 0.82, H * 0.52);
+      ctx.lineTo(W * 0.94, H * 0.58);
+      ctx.lineTo(W, H * 0.55);
+      ctx.lineTo(W, H * 0.78); ctx.lineTo(0, H * 0.78);
+      ctx.closePath(); ctx.fill();
 
-      for (const p of pts) {
-        const alpha = p.a * eff * (0.5 + 0.5 * Math.sin(t + p.phase));
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(180, 215, 255, ${alpha})`;
-        ctx.fill();
-        
-        p.x += p.dx * speedMod * calmFactor * 4;
-        p.y += p.dy * speedMod * calmFactor * 2;
-        
-        if (p.x < 0 || p.x > canvas.width)  p.dx *= -1;
-        if (p.y < 0 || p.y > canvas.height * 0.75) p.dy *= -1;
+      // Mid range
+      ctx.fillStyle = "rgba(10,18,34,0.92)";
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.72);
+      ctx.lineTo(W * 0.08, H * 0.64);
+      ctx.lineTo(W * 0.18, H * 0.70);
+      ctx.lineTo(W * 0.30, H * 0.60);
+      ctx.lineTo(W * 0.42, H * 0.68);
+      ctx.lineTo(W * 0.55, H * 0.58);
+      ctx.lineTo(W * 0.68, H * 0.66);
+      ctx.lineTo(W * 0.80, H * 0.62);
+      ctx.lineTo(W * 0.92, H * 0.70);
+      ctx.lineTo(W, H * 0.66);
+      ctx.lineTo(W, H * 0.78); ctx.lineTo(0, H * 0.78);
+      ctx.closePath(); ctx.fill();
+
+      // Fog bands (drifting horizontally)
+      for (const fb of fogBands) {
+        fb.off += fb.speed * dt * W;
+        if (fb.off > W) fb.off -= W * 2;
+        const fy = H * fb.y;
+        const fh = H * fb.h;
+        const fg = ctx.createLinearGradient(0, fy, 0, fy + fh);
+        fg.addColorStop(0, `rgba(200,225,255,${fb.alpha * (ac ? 1 : 0.7)})`);
+        fg.addColorStop(0.5, `rgba(180,210,240,${fb.alpha * 0.6 * (ac ? 1 : 0.7)})`);
+        fg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = fg;
+        // Offset wrapped band (drift)
+        ctx.save();
+        ctx.translate((fb.off % W) - W * 0.2, 0);
+        ctx.fillRect(0, fy, W * 1.4, fh);
+        ctx.restore();
       }
-      rafRef.current = requestAnimationFrame(draw);
-    };
-    draw();
 
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      ro.disconnect();
+      // Water — dark plane with horizon line
+      ctx.fillStyle = PAL.water;
+      ctx.fillRect(0, H * 0.78, W, H * 0.22);
+
+      // Water shimmer tied to orb scale
+      const shimmerA = 0.04 + (os - 0.55) * 0.10;
+      ctx.fillStyle = `rgba(120,170,230,${shimmerA})`;
+      for (let i = 0; i < 14; i++) {
+        const y = H * 0.80 + i * (H * 0.018);
+        const wob = Math.sin(t * 0.0006 + i * 0.7) * 6;
+        ctx.fillRect(W * 0.20 + wob, y, W * 0.60, 0.6);
+      }
+
+      // Moon reflection on water
+      const ry = H * 0.82;
+      const rg = ctx.createRadialGradient(cx, ry, 0, cx, ry, W * 0.22);
+      rg.addColorStop(0, `rgba(180,210,250,${0.18 + lift * 0.10})`);
+      rg.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, H * 0.78, W, H * 0.22);
+
+      // Rising particles
+      for (const p of parts) {
+        const speed = ph === "inhale" ? 1.6 : ph === "exhale" ? 0.7 : 1.0;
+        p.y -= p.vy * dt * speed;
+        if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
+        // alpha fades at top/bottom edges
+        const edge = Math.min(1, Math.min(p.y, 1 - p.y) * 4);
+        const flick = 0.6 + 0.4 * Math.sin(t * 0.001 + p.p);
+        ctx.fillStyle = `rgba(200,225,255,${p.a * edge * flick * (ac ? 1 : 0.6)})`;
+        ctx.beginPath(); ctx.arc(p.x * W, p.y * H, p.r, 0, Math.PI * 2); ctx.fill();
+      }
+
+      raf = requestAnimationFrame(draw);
     };
-  }, [active, breathPhase, breathProgress, sessionProgress]);
+    raf = requestAnimationFrame(draw);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, []);
 
   return (
     <canvas
-      ref={canvasRef}
+      ref={ref}
       className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ zIndex: 1 }}
+      style={{ zIndex: 0, display: "block" }}
     />
   );
 }
 
-const DURATION_OPTIONS = [5, 10, 15, 20, 30, 45];
+/* ─────────────────────────────────────────────────────────────
+   Canvas Breathing Orb — 320×320 internal, CSS-scaled to 160
+   ───────────────────────────────────────────────────────────── */
+interface OrbProps {
+  scale: number;       // current orb scale (animated)
+  phase: BreathPhase;
+  active: boolean;
+}
+function BreathingOrbCanvas({ scale, phase, active }: OrbProps) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const stateRef = useRef({ scale, phase, active });
+  useEffect(() => { stateRef.current = { scale, phase, active }; }, [scale, phase, active]);
 
-/* ─── Main RecoveryMode orchestrator ─────────────────────────────────────── */
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const SIZE = 320;
+    canvas.width = SIZE * dpr;
+    canvas.height = SIZE * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    let raf = 0;
+
+    const draw = (now: number) => {
+      const { scale: s, phase: ph, active: ac } = stateRef.current;
+      ctx.clearRect(0, 0, SIZE, SIZE);
+
+      const cx = SIZE / 2;
+      const cy = SIZE / 2;
+      const baseR = 80;
+      const r = baseR * s;
+
+      // Layer 1 — outer ambient glow
+      const glowR = r * 2.2;
+      const og = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, glowR);
+      const glowA = ph === "inhale" ? 0.55 : ph === "hold" ? 0.50 : 0.32;
+      og.addColorStop(0, `rgba(100,170,240,${glowA})`);
+      og.addColorStop(0.35, `rgba(80,140,220,${glowA * 0.45})`);
+      og.addColorStop(0.7, `rgba(60,110,200,${glowA * 0.15})`);
+      og.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = og;
+      ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI * 2); ctx.fill();
+
+      // Layer 4 — waveform below the orb (amplitude tied to scale)
+      ctx.save();
+      ctx.strokeStyle = `rgba(150,200,250,${0.20 + (s - 0.55) * 0.5})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      const wy = cy + baseR + 50;
+      const amp = 6 + (s - 0.55) * 28;
+      for (let x = 20; x <= SIZE - 20; x += 2) {
+        const px = x;
+        const py = wy + Math.sin((x / 16) + now * 0.002) * amp;
+        if (x === 20) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Layer 2 — core sphere (with offset highlight)
+      const sg = ctx.createRadialGradient(
+        cx - r * 0.30, cy - r * 0.30, r * 0.05,
+        cx, cy, r
+      );
+      sg.addColorStop(0, "rgba(235,245,255,0.95)");
+      sg.addColorStop(0.25, "rgba(160,200,245,0.85)");
+      sg.addColorStop(0.65, "rgba(74,143,196,0.55)");
+      sg.addColorStop(1, "rgba(20,50,100,0.20)");
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+
+      // Inner rim shadow for spherical depth
+      ctx.strokeStyle = "rgba(10,20,40,0.30)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.98, 0, Math.PI * 2); ctx.stroke();
+
+      // Layer 3 — 8 orbital particles
+      const orbitA = ph === "inhale" ? 0.85 : ph === "hold" ? 0.70 : 0.40;
+      const orbitSpeed = ph === "hold" ? 0.0003 : 0.0008;
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2 + now * orbitSpeed;
+        const rad = r + 22 + Math.sin(now * 0.0012 + i) * 8;
+        const px = cx + Math.cos(ang) * rad * 1.1;
+        const py = cy + Math.sin(ang) * rad * 0.7;
+        const pr = 1.6 + Math.sin(now * 0.002 + i) * 0.6;
+        ctx.fillStyle = `rgba(180,215,250,${orbitA * (ac ? 1 : 0.5)})`;
+        ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+      }
+
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <canvas
+      ref={ref}
+      style={{
+        width: 320,
+        height: 320,
+        display: "block",
+      }}
+    />
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Smooth-followed orb scale (frame-rate independent)
+   ───────────────────────────────────────────────────────────── */
+function useSmoothScale(target: number) {
+  const [scale, setScale] = useState(target);
+  const cur = useRef(target);
+  const tgt = useRef(target);
+  useEffect(() => { tgt.current = target; }, [target]);
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      cur.current += (tgt.current - cur.current) * 0.04;
+      setScale(cur.current);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return scale;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Biometric Stream — evolves per cycle
+   ───────────────────────────────────────────────────────────── */
+type MetricKey = "fatigue" | "cortisol" | "para" | "hrv";
+interface Metric { key: MetricKey; label: string; value: number; dir: -1 | 1; }
+const INITIAL_METRICS: Metric[] = [
+  { key: "fatigue",  label: "Cognitive Fatigue",     value: 72, dir: -1 },
+  { key: "cortisol", label: "Cortisol Level",        value: 58, dir: -1 },
+  { key: "para",     label: "Parasympathetic Tone",  value: 34, dir:  1 },
+  { key: "hrv",      label: "HRV Coherence",         value: 28, dir:  1 },
+];
+
+/* ─────────────────────────────────────────────────────────────
+   Recovery Tools chips
+   ───────────────────────────────────────────────────────────── */
+const TOOLS = ["Breathwork", "Meditation", "Sleep Prep", "Body Scan", "Gratitude"] as const;
+
+/* ─────────────────────────────────────────────────────────────
+   Time helpers
+   ───────────────────────────────────────────────────────────── */
+function fmt(t: number) {
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Main component
+   ───────────────────────────────────────────────────────────── */
 export function RecoveryMode() {
   const { mode, setMode } = useOS();
   const visible = mode === "recovery";
 
-  const [patternIdx,    setPatternIdx]    = useState(0);
-  const [durationMins,  setDurationMins]  = useState(20);
-  const [showDuration,  setShowDuration]  = useState(false);
-  const [showComplete,  setShowComplete]  = useState(false);
+  const [patternIdx, setPatternIdx] = useState(0);
+  const [activeTool, setActiveTool] = useState<typeof TOOLS[number]>("Breathwork");
+  const [metrics, setMetrics] = useState<Metric[]>(INITIAL_METRICS);
 
-  const session = useRecoverySession();
-  const [audio, audioControls] = useAmbientAudio();
-
-  const { state: breathState, start: startBreath, stop: stopBreath, reset: resetBreath } =
+  const { state: breath, start: startBreath, stop: stopBreath, reset: resetBreath } =
     useBreathingEngine({ pattern: BREATH_PATTERNS[patternIdx] });
 
-  // Sync session complete trigger
+  const [audio, audioControls] = useAmbientAudio();
+
+  // session timing
+  const [running, setRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [elapsed, setElapsed] = useState(0); // seconds counting up
+  const startedAt = useRef<number>(0);
+  const accumulated = useRef<number>(0);
+  const tickRef = useRef<number>(0);
+
+  // tick session clock
   useEffect(() => {
-    if (session.status === "complete") {
-      stopBreath();
-      setShowComplete(true);
-    }
-  }, [session.status, stopBreath]);
+    if (!running) return;
+    const tick = () => {
+      const now = Date.now();
+      setElapsed(Math.floor((accumulated.current + (now - startedAt.current)) / 1000));
+      tickRef.current = requestAnimationFrame(tick);
+    };
+    tickRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(tickRef.current);
+  }, [running]);
 
-  const handleStart = useCallback(() => {
-    if (session.status === "idle" || session.status === "complete") {
-      session.start(durationMins, patternIdx);
-      startBreath();
-      setShowComplete(false);
-    } else if (session.status === "running") {
-      session.pause();
-      stopBreath();
-    } else if (session.status === "paused") {
-      session.resume();
-      startBreath();
-    }
-  }, [session, durationMins, patternIdx, startBreath, stopBreath]);
+  // Persistence — once per cycle
+  const lastSavedCycle = useRef(-1);
+  useEffect(() => {
+    if (breath.cycle !== lastSavedCycle.current) {
+      lastSavedCycle.current = breath.cycle;
+      try {
+        localStorage.setItem("routineos_recovery_state", JSON.stringify({
+          patternIdx, cycles: breath.cycle, elapsed, ts: Date.now(),
+        }));
+      } catch { /* noop */ }
 
-  const handleEnd = useCallback(() => {
-    session.end(false);
-    resetBreath();
-    audioControls.stop();
-    setShowComplete(false);
-  }, [session, resetBreath, audioControls]);
+      // Evolve metrics each completed cycle (skip the 0->0 initial render)
+      if (breath.cycle > 0) {
+        setMetrics(prev => prev.map(m => {
+          const step = (2 + Math.random() * 4) * m.dir;
+          const next = Math.max(5, Math.min(98, m.value + step));
+          return { ...m, value: next };
+        }));
+      }
+    }
+  }, [breath.cycle, patternIdx, elapsed]);
+
+  // Smooth orb scale: inhale -> 1.0, exhale -> 0.55, hold -> hold current target
+  const targetScale = (() => {
+    if (!running) return 0.55;
+    if (breath.phase === "inhale") return 1.0;
+    if (breath.phase === "exhale") return 0.55;
+    if (breath.phase === "hold")   return 1.0;
+    return 0.55;
+  })();
+  const orbScale = useSmoothScale(targetScale);
+
+  const handleBegin = useCallback(() => {
+    if (running) return;
+    if (paused) {
+      startedAt.current = Date.now();
+      setRunning(true);
+      setPaused(false);
+      startBreath();
+      return;
+    }
+    accumulated.current = 0;
+    startedAt.current = Date.now();
+    setElapsed(0);
+    setRunning(true);
+    startBreath();
+  }, [running, paused, startBreath]);
+
+  const handlePause = useCallback(() => {
+    if (!running) return;
+    accumulated.current += Date.now() - startedAt.current;
+    setRunning(false);
+    setPaused(true);
+    stopBreath();
+  }, [running, stopBreath]);
 
   const handleReset = useCallback(() => {
-    session.end(true);
+    accumulated.current = 0;
+    setRunning(false);
+    setPaused(false);
+    setElapsed(0);
     resetBreath();
-    setShowComplete(false);
-  }, [session, resetBreath]);
+    setMetrics(INITIAL_METRICS);
+    try { localStorage.removeItem("routineos_recovery_state"); } catch { /* noop */ }
+  }, [resetBreath]);
 
-  const handleExitRecovery = useCallback(() => {
-    session.end(true);
-    resetBreath();
+  const handleExit = useCallback(() => {
+    handleReset();
     audioControls.stop();
-    setShowComplete(false);
     setMode("operator");
-  }, [session, resetBreath, audioControls, setMode]);
+  }, [handleReset, audioControls, setMode]);
 
-  // Keyboard space-toggle support
+  // Update breathing pattern when changed
   useEffect(() => {
-    if (!visible) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === " " && (e.target as HTMLElement).tagName !== "INPUT") {
-        e.preventDefault();
-        handleStart();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [visible, handleStart]);
+    if (running) {
+      // pattern change during run: reset breath internals safely
+      resetBreath();
+      startBreath();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patternIdx]);
 
-  const isRunning  = session.status === "running";
-  const isPaused   = session.status === "paused";
-  const isComplete = session.status === "complete";
-  const isIdle     = session.status === "idle";
+  // Coherence score
+  const coherence = breath.cycle >= 3 ? Math.min(95, 40 + breath.cycle * 12) : null;
 
-  const sessionProgress = session.duration > 0
-    ? Math.min(1.0, (session.duration - session.seconds) / session.duration)
-    : 0;
+  // Active protocol
+  const protocol = BREATH_PATTERNS[patternIdx];
 
-  const ctaLabel =
-    isRunning  ? "Pause Session"
-    : isPaused ? "Resume Session"
-    : isComplete ? "Session Complete"
-    : "Start Recovery Protocol";
+  // CTA label
+  const ctaLabel = running ? "Running" : paused ? "Resume" : "Begin Session";
 
   return (
     <AnimatePresence>
       {visible && (
         <motion.div
-          key="recovery-mode"
+          key="recovery-sanctuary"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0, scale: 0.99 }}
-          transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
-          className="fixed inset-0 overflow-hidden flex flex-col justify-between"
+          exit={{ opacity: 0 }}
+          transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
+          className="fixed inset-0 overflow-hidden"
           style={{
             zIndex: 45,
-            background: "#010206",
-            fontFamily: "var(--font-sans)",
+            background: PAL.void,
+            fontFamily: FONT_UI,
+            color: PAL.text,
           }}
         >
-          {/* ── Immersive Parallax Environment ── */}
-          <MountainBackground
-            ambientTone={audio.current ?? "default"}
-            sessionRunning={isRunning}
-            breathPhase={breathState.phase}
-            breathProgress={breathState.progress}
+          {/* Canvas environment */}
+          <RecoveryEnvironment orbScale={orbScale} phase={breath.phase} active={running} />
+
+          {/* Vignette */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              zIndex: 1,
+              background:
+                "radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.55) 100%)",
+            }}
           />
 
-          {/* ── Volumetric Star Dust particles ── */}
-          <RecoveryParticles
-            active={isRunning}
-            breathPhase={breathState.phase}
-            breathProgress={breathState.progress}
-            sessionProgress={sessionProgress}
-          />
+          {/* HUD: exit */}
+          <motion.button
+            onClick={handleExit}
+            whileHover={{ opacity: 1 }}
+            className="absolute top-5 right-6 flex items-center gap-2 cursor-pointer"
+            style={{
+              zIndex: 20,
+              background: "transparent",
+              border: "none",
+              color: PAL.textMut,
+              fontFamily: FONT_UI,
+              fontSize: "10px",
+              letterSpacing: "0.28em",
+              textTransform: "uppercase",
+            }}
+          >
+            <X className="w-3.5 h-3.5" />
+            Exit Sanctuary
+          </motion.button>
 
-          {/* ════════════════════════════════════════
-              HUD TOP META BAR
-          ════════════════════════════════════════ */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.8 }}
-            className="w-full flex items-center justify-between px-8 py-5 relative"
+          {/* HUD: identity */}
+          <div
+            className="absolute top-5 left-6"
+            style={{ zIndex: 20 }}
+          >
+            <div style={{
+              fontFamily: FONT_UI,
+              fontWeight: 300,
+              fontSize: "10px",
+              letterSpacing: "0.32em",
+              textTransform: "uppercase",
+              color: PAL.textMut,
+            }}>
+              Routine OS · Recovery
+            </div>
+          </div>
+
+          {/* ╔══════════════════════════════════════════════════
+              THREE-PANEL LAYOUT
+              ╚══════════════════════════════════════════════════ */}
+          <div
+            className="relative w-full h-full flex items-stretch"
             style={{ zIndex: 10 }}
           >
-            {/* Left Protocol Identity */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.02] border border-white/[0.04] backdrop-blur-md">
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    background: isRunning ? "#64d2ff" : isPaused ? "#ffd60a" : "rgba(255,255,255,0.2)",
-                  }}
-                />
-                <span className="text-[0.55rem] font-bold tracking-[0.24em] text-white/50 uppercase">
-                  Routine OS · Recovery Sanctuary
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/[0.01]">
-                <Leaf className="w-3 h-3 text-emerald-400/40" />
-                <span className="text-[0.50rem] font-semibold tracking-[0.16em] text-white/30 uppercase">
-                  Nervous Regulation
-                </span>
-              </div>
-            </div>
-
-            {/* Right workspace toggle actions */}
-            <div className="flex items-center gap-3">
-              {session.streak > 0 && (
-                <div className="px-2.5 py-0.5 rounded-full bg-amber-400/5 border border-amber-400/10">
-                  <span className="text-[0.52rem] font-bold text-amber-200/60 uppercase tracking-[0.12em]">
-                    🔥 {session.streak} Day streak
-                  </span>
-                </div>
-              )}
-
-              {(isRunning || isPaused) ? (
-                <motion.button
-                  onClick={handleEnd}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.96 }}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-400/5 hover:bg-red-400/10 border border-red-400/15 cursor-pointer text-red-200/60 hover:text-red-200/80 transition-all text-[0.56rem] font-bold tracking-[0.12em] uppercase"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  Terminate Session
-                </motion.button>
-              ) : (
-                <motion.button
-                  onClick={handleExitRecovery}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.96 }}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] cursor-pointer text-white/50 hover:text-white/80 transition-all text-[0.56rem] font-bold tracking-[0.12em] uppercase"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  Exit Sanctuary
-                </motion.button>
-              )}
-            </div>
-          </motion.div>
-
-          {/* ════════════════════════════════════════
-              MAIN SPATIAL CENTER LAYOUT
-          ════════════════════════════════════════ */}
-          <div className="flex-1 w-full flex items-stretch px-8 relative" style={{ zIndex: 5 }}>
-            {/* ── LEFT margin: Acoustic Selector + Patterns ── */}
-            <motion.div
-              initial={{ opacity: 0, x: -15 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.4, duration: 0.9 }}
-              className="w-72 shrink-0 flex flex-col justify-between py-6 pr-6 border-r border-white/[0.02]"
+            {/* LEFT — Protocol + Sound */}
+            <aside
+              className="shrink-0 h-full flex flex-col"
+              style={{
+                width: 240,
+                padding: "80px 22px 28px 28px",
+                borderRight: `1px solid ${PAL.hair}`,
+              }}
             >
-              <AmbientAudioPanel audio={audio} controls={audioControls} />
+              <PanelHeader title="Protocol" />
+              <div className="flex flex-col gap-1.5 mt-3">
+                {BREATH_PATTERNS.map((p, i) => {
+                  const active = patternIdx === i;
+                  return (
+                    <button
+                      key={p.name}
+                      onClick={() => setPatternIdx(i)}
+                      className="text-left cursor-pointer transition-all"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        padding: "8px 0",
+                        borderBottom: `1px solid ${active ? "rgba(100,140,200,0.18)" : "transparent"}`,
+                      }}
+                    >
+                      <div style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontWeight: 400,
+                        fontSize: "16px",
+                        letterSpacing: "0.02em",
+                        color: active ? PAL.text : PAL.textDim,
+                        lineHeight: 1.2,
+                      }}>
+                        {p.name}
+                      </div>
+                      <div style={{
+                        fontFamily: FONT_UI,
+                        fontWeight: 300,
+                        fontSize: "9.5px",
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: PAL.textMut,
+                        marginTop: 3,
+                      }}>
+                        {p.inhale}·{p.hold}·{p.exhale}{p.rest ? `·${p.rest}` : ""}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
 
-              {/* Breath structural details selector */}
-              <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-white/[0.02]">
-                <span className="text-[0.56rem] font-semibold tracking-[0.32em] text-white/30 uppercase block">
-                  Respiration Loops
-                </span>
-                <div className="flex flex-col gap-1.5">
-                  {BREATH_PATTERNS.map((p, i) => {
-                    const isActive = patternIdx === i;
+              <div className="mt-8">
+                <PanelHeader title="Atmosphere" />
+                <div className="flex flex-col gap-1 mt-3">
+                  {AMBIENT_PRESETS.slice(0, 6).map((s) => {
+                    const on = audio.current === s.id && audio.active;
                     return (
-                      <motion.button
-                        key={p.name}
-                        onClick={() => { if (!isRunning) setPatternIdx(i); }}
-                        whileHover={{ x: isRunning ? 0 : 2 }}
-                        disabled={isRunning}
-                        className={`flex items-center justify-between px-3 py-2 rounded-xl border text-left cursor-pointer transition-all duration-300 ${
-                          isActive
-                            ? "bg-white/[0.03] border-white/[0.12]"
-                            : "bg-transparent border-white/[0.02] hover:border-white/[0.06]"
-                        } ${isRunning && !isActive ? "opacity-35 cursor-not-allowed" : "opacity-100"}`}
+                      <button
+                        key={s.id}
+                        onClick={() => audioControls.toggle(s.id as AmbientSound)}
+                        className="text-left cursor-pointer flex items-center justify-between"
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          padding: "6px 0",
+                        }}
                       >
-                        <div>
-                          <span className="text-[0.62rem] font-medium text-white/60 block">{p.name}</span>
-                          <span className="text-[0.50rem] text-white/20 block mt-0.5">{p.description}</span>
-                        </div>
-                        <span className="text-[0.52rem] font-mono text-white/30 pl-2">
-                          {p.inhale}s-{p.hold}s-{p.exhale}s
+                        <span style={{
+                          fontFamily: FONT_DISPLAY,
+                          fontWeight: 300,
+                          fontSize: "14px",
+                          color: on ? PAL.text : PAL.textDim,
+                          letterSpacing: "0.02em",
+                        }}>
+                          {s.label}
                         </span>
-                      </motion.button>
+                        <span style={{
+                          width: 6, height: 6, borderRadius: 999,
+                          background: on ? PAL.blueHi : "rgba(100,140,200,0.18)",
+                          boxShadow: on ? `0 0 10px ${PAL.blueHi}` : "none",
+                        }} />
+                      </button>
                     );
                   })}
                 </div>
-              </div>
-            </motion.div>
 
-            {/* ── CENTER focus: Massive Breathing Reactor Core ── */}
-            <div className="flex-1 flex flex-col items-center justify-center relative">
-              {/* Soft floating breath loop indicator message */}
-              <div className="absolute top-8">
+                {/* Volume */}
+                <div className="mt-4">
+                  <div style={{
+                    fontFamily: FONT_UI,
+                    fontWeight: 300,
+                    fontSize: "9px",
+                    letterSpacing: "0.28em",
+                    textTransform: "uppercase",
+                    color: PAL.textMut,
+                    marginBottom: 8,
+                  }}>
+                    Volume · {Math.round(audio.volume * 100)}%
+                  </div>
+                  <div className="relative h-[2px] rounded-full" style={{ background: "rgba(100,140,200,0.10)" }}>
+                    <div
+                      className="absolute left-0 top-0 h-full rounded-full"
+                      style={{
+                        width: `${audio.volume * 100}%`,
+                        background: PAL.blue,
+                        boxShadow: `0 0 8px ${PAL.blue}`,
+                      }}
+                    />
+                    <input
+                      type="range"
+                      min={0} max={1} step={0.01}
+                      value={audio.volume}
+                      onChange={(e) => audioControls.setVolume(parseFloat(e.target.value))}
+                      className="absolute inset-0 w-full opacity-0 cursor-pointer"
+                      style={{ height: 16, top: -7 }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            {/* CENTER — Orb + controls */}
+            <main
+              className="flex-1 h-full flex flex-col items-center justify-center relative"
+              style={{ padding: "60px 24px 28px" }}
+            >
+              {/* Phase label */}
+              <div className="absolute top-[14%] left-1/2 -translate-x-1/2">
                 <AnimatePresence mode="wait">
-                  <motion.span
-                    key={breathState.running ? breathState.phase : "ready"}
-                    initial={{ opacity: 0, y: 3 }}
-                    animate={{ opacity: 0.35, y: 0 }}
-                    exit={{ opacity: 0, y: -3 }}
-                    transition={{ duration: 0.8 }}
-                    className="text-[0.58rem] font-medium tracking-[0.4em] text-white uppercase"
+                  <motion.div
+                    key={running ? breath.phase : "ready"}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.6 }}
+                    style={{
+                      fontFamily: FONT_UI,
+                      fontWeight: 200,
+                      fontSize: "11px",
+                      letterSpacing: "0.46em",
+                      textTransform: "uppercase",
+                      color: PAL.textDim,
+                      textAlign: "center",
+                    }}
                   >
-                    {breathState.running
-                      ? breathState.phase === "inhale" ? "Draw Oxygen Inwards"
-                        : breathState.phase === "hold"   ? "Hold Breath in Stillness"
-                        : "Exhale Tension Outwards"
-                      : "Acoustics Prime. Prepare Breath."
-                    }
-                  </motion.span>
+                    {running
+                      ? (breath.phase === "inhale" ? "Inhale"
+                        : breath.phase === "hold" ? "Hold"
+                        : breath.phase === "exhale" ? "Exhale"
+                        : "Rest")
+                      : paused ? "Paused" : "Stillness"}
+                  </motion.div>
                 </AnimatePresence>
               </div>
 
-              <RecoveryOrb
-                breathState={breathState}
-                sessionRunning={isRunning || isPaused}
-                sessionSeconds={session.seconds}
-                sessionDuration={session.duration}
-                ambientTone={audio.current ?? "default"}
-              />
-
-              <div className="absolute bottom-8 flex flex-col items-center">
-                <span className="text-[0.52rem] font-semibold tracking-[0.24em] text-white/20 uppercase mb-1">
-                  Active Preset
-                </span>
-                <span className="text-[0.62rem] font-medium text-white/40 tracking-[0.02em] uppercase">
-                  {BREATH_PATTERNS[patternIdx].name} ({BREATH_PATTERNS[patternIdx].inhale}s-{BREATH_PATTERNS[patternIdx].hold}s-{BREATH_PATTERNS[patternIdx].exhale}s)
-                </span>
-              </div>
-            </div>
-
-            {/* ── RIGHT margin: Live Telemetry + Metrics details ── */}
-            <motion.div
-              initial={{ opacity: 0, x: 15 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.4, duration: 0.9 }}
-              className="w-72 shrink-0 flex flex-col justify-between py-6 pl-6 border-l border-white/[0.02]"
-            >
-              <RecoveryInsights
-                sessionSeconds={session.seconds}
-                sessionDuration={session.duration}
-                sessionRunning={isRunning}
-                breathCycles={breathState.cycle}
-              />
-
-              {/* Spatial HUD information rows */}
-              <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-white/[0.02]">
-                <span className="text-[0.56rem] font-semibold tracking-[0.32em] text-white/30 uppercase block">
-                  Configuration Details
-                </span>
-                <div className="flex flex-col gap-2">
-                  {[
-                    { label: "Target Session Time", value: `${durationMins} min` },
-                    { label: "Respirations Stacked", value: `${breathState.cycle} cycles` },
-                    { label: "System Calibration",  value: BREATH_PATTERNS[patternIdx].name },
-                    { label: "Acoustic Aura",       value: audio.current ? audio.current.charAt(0).toUpperCase() + audio.current.slice(1) : "Neutral" },
-                  ].map(row => (
-                    <div key={row.label} className="flex justify-between items-baseline">
-                      <span className="text-[0.56rem] text-white/25">{row.label}</span>
-                      <span className="text-[0.56rem] font-mono text-white/50">{row.value}</span>
-                    </div>
-                  ))}
+              {/* Orb (CSS scaled to 160) */}
+              <div
+                style={{
+                  width: 160, height: 160,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transform: "scale(1)",
+                }}
+              >
+                <div style={{ transform: "scale(0.5)", transformOrigin: "center" }}>
+                  <BreathingOrbCanvas scale={orbScale} phase={breath.phase} active={running} />
                 </div>
               </div>
-            </motion.div>
+
+              {/* Timer beneath orb */}
+              <div className="mt-10 text-center">
+                <div style={{
+                  fontFamily: FONT_DISPLAY,
+                  fontWeight: 300,
+                  fontSize: "64px",
+                  lineHeight: 1,
+                  letterSpacing: "0.04em",
+                  color: PAL.text,
+                }}>
+                  {running ? breath.phaseSecondsLeft : "—"}
+                </div>
+                <div style={{
+                  fontFamily: FONT_UI,
+                  fontWeight: 300,
+                  fontSize: "10px",
+                  letterSpacing: "0.36em",
+                  textTransform: "uppercase",
+                  color: PAL.textMut,
+                  marginTop: 14,
+                }}>
+                  {protocol.name} · cycle {breath.cycle}
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="mt-12 flex items-center gap-3">
+                <PillButton onClick={handleReset} disabled={!running && !paused && elapsed === 0}>
+                  Reset
+                </PillButton>
+                <PillButton
+                  onClick={running ? undefined : handleBegin}
+                  primary
+                  disabled={running}
+                >
+                  {ctaLabel}
+                </PillButton>
+                <PillButton onClick={handlePause} disabled={!running}>
+                  Pause
+                </PillButton>
+              </div>
+
+              {/* Recovery Tools chips */}
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2">
+                {TOOLS.map((t) => {
+                  const on = activeTool === t;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setActiveTool(t)}
+                      className="cursor-pointer transition-all"
+                      style={{
+                        fontFamily: FONT_UI,
+                        fontWeight: 300,
+                        fontSize: "10px",
+                        letterSpacing: "0.18em",
+                        textTransform: "uppercase",
+                        color: on ? PAL.text : PAL.textMut,
+                        padding: "7px 14px",
+                        borderRadius: 30,
+                        border: `1px solid ${on ? "rgba(100,140,200,0.20)" : "transparent"}`,
+                        background: on ? "rgba(74,143,196,0.10)" : "transparent",
+                      }}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            </main>
+
+            {/* RIGHT — Biometrics + Session */}
+            <aside
+              className="shrink-0 h-full flex flex-col"
+              style={{
+                width: 240,
+                padding: "80px 28px 28px 22px",
+                borderLeft: `1px solid ${PAL.hair}`,
+              }}
+            >
+              <PanelHeader title="Biometrics" />
+              <div className="flex flex-col gap-4 mt-4">
+                {metrics.map((m) => (
+                  <div key={m.key}>
+                    <div className="flex items-baseline justify-between mb-1.5">
+                      <span style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontWeight: 400,
+                        fontSize: "13px",
+                        color: PAL.textDim,
+                        letterSpacing: "0.02em",
+                      }}>
+                        {m.label}
+                      </span>
+                      <span style={{
+                        fontFamily: FONT_UI,
+                        fontWeight: 300,
+                        fontSize: "11px",
+                        color: PAL.text,
+                        fontVariantNumeric: "tabular-nums",
+                      }}>
+                        {Math.round(m.value)}%
+                      </span>
+                    </div>
+                    <div className="relative h-[2px] rounded-full" style={{ background: "rgba(100,140,200,0.10)" }}>
+                      <div
+                        className="absolute left-0 top-0 h-full rounded-full"
+                        style={{
+                          width: `${m.value}%`,
+                          background: m.dir === 1 ? PAL.blue : "rgba(140,180,220,0.55)",
+                          boxShadow: `0 0 6px ${m.dir === 1 ? "rgba(74,143,196,0.6)" : "rgba(140,180,220,0.4)"}`,
+                          transition: "width 1.5s ease",
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-10">
+                <PanelHeader title="Session" />
+                <div className="flex flex-col gap-2.5 mt-4">
+                  <SessionRow label="Duration" value={fmt(elapsed)} mono />
+                  <SessionRow label="Cycles" value={String(breath.cycle)} mono />
+                  <SessionRow label="Protocol" value={protocol.name} />
+                  <SessionRow
+                    label="Coherence"
+                    value={coherence !== null ? `${coherence}%` : "—"}
+                    mono
+                    dim={coherence === null}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-auto pt-6">
+                <div style={{
+                  fontFamily: FONT_DISPLAY,
+                  fontWeight: 300,
+                  fontStyle: "italic",
+                  fontSize: "13px",
+                  lineHeight: 1.5,
+                  color: PAL.textMut,
+                  letterSpacing: "0.01em",
+                }}>
+                  Still water. Quiet mind. You have arrived somewhere safe.
+                </div>
+              </div>
+            </aside>
           </div>
-
-          {/* ════════════════════════════════════════
-              HUD BOTTOM DECOMPRESSION PANEL
-          ════════════════════════════════════════ */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.8 }}
-            className="w-full flex flex-col items-center relative py-6 border-t border-white/[0.02]"
-            style={{ zIndex: 10 }}
-          >
-            <div className="w-full max-w-4xl flex items-center justify-between px-8">
-              {/* Minimal Capsule progress indicator bars */}
-              <div className="flex-1 max-w-xl">
-                <RecoveryProgress
-                  sessionSeconds={session.seconds}
-                  sessionDuration={session.duration}
-                  sessionRunning={isRunning}
-                  breathCycles={breathState.cycle}
-                  streak={session.streak}
-                />
-              </div>
-
-              {/* Centered execution triggers */}
-              <div className="flex flex-col items-end gap-3 pl-8 shrink-0">
-                {isIdle && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowDuration(s => !s)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/[0.04] backdrop-blur-md cursor-pointer text-white/50 hover:text-white/80 transition-colors text-[0.58rem] font-medium"
-                    >
-                      <Timer className="w-3.5 h-3.5" />
-                      {durationMins} Mins duration
-                      {showDuration ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
-
-                    <AnimatePresence>
-                      {showDuration && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          className="flex gap-1 px-1.5 py-1 rounded-full bg-black/90 border border-white/[0.06] backdrop-blur-lg absolute right-12 bottom-20"
-                        >
-                          {DURATION_OPTIONS.map(d => (
-                            <button
-                              key={d}
-                              onClick={() => { setDurationMins(d); setShowDuration(false); }}
-                              className={`px-2 py-0.5 rounded-full cursor-pointer text-[0.52rem] font-mono font-medium ${
-                                durationMins === d ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"
-                              }`}
-                            >
-                              {d}m
-                            </button>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {/* Main CTA */}
-                <motion.button
-                  onClick={isComplete ? handleReset : handleStart}
-                  whileHover={!isComplete ? { scale: 1.01 } : {}}
-                  whileTap={!isComplete ? { scale: 0.99 } : {}}
-                  className={`w-52 py-3.5 px-6 rounded-xl border text-center font-semibold text-[0.68rem] tracking-[0.06em] uppercase cursor-pointer select-none transition-all duration-300 ${
-                    isComplete
-                      ? "bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                      : isRunning
-                      ? "bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.08] text-white/70"
-                      : "bg-white/90 hover:bg-white border-transparent text-black"
-                  }`}
-                  style={{
-                    boxShadow: isRunning || isPaused ? "none" : "0 4px 20px rgba(255,255,255,0.08)",
-                  }}
-                >
-                  {isComplete ? "✓ Cycle Completed" : ctaLabel}
-                </motion.button>
-
-                {/* Cancel link */}
-                {(isRunning || isPaused) && (
-                  <button
-                    onClick={handleReset}
-                    className="flex items-center gap-1 bg-transparent border-none text-[0.52rem] font-semibold text-white/25 hover:text-white/40 tracking-[0.08em] uppercase cursor-pointer transition-colors"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Void Session
-                  </button>
-                )}
-              </div>
-            </div>
-          </motion.div>
-
-          {/* ── Complete Overlay Screen ── */}
-          <AnimatePresence>
-            {showComplete && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 1.0 }}
-                className="absolute inset-0 flex items-center justify-center bg-black/85 backdrop-blur-3xl"
-                style={{ zIndex: 30 }}
-              >
-                <motion.div
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.95, opacity: 0 }}
-                  transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                  className="max-w-md w-full px-12 py-10 rounded-2xl bg-white/[0.01] border border-white/[0.04] backdrop-blur-md text-center"
-                >
-                  <motion.div
-                    animate={{ opacity: [0.4, 0.8, 0.4] }}
-                    transition={{ duration: 4, repeat: Infinity }}
-                    className="text-[2rem] text-white/60 mb-3"
-                  >
-                    ✦
-                  </motion.div>
-                  <h2 className="text-[1.1rem] font-semibold text-white/80 tracking-[0.02em] mb-2">
-                    Decompression Completed
-                  </h2>
-                  <p className="text-[0.62rem] leading-relaxed text-white/35 max-w-[18rem] mx-auto mb-8">
-                    You have spent {durationMins} minutes in deep autonomic calibration. Your cognitive stability has been successfully restored.
-                  </p>
-                  
-                  <div className="flex items-center justify-center gap-4">
-                    <button
-                      onClick={() => setShowComplete(false)}
-                      className="px-4 py-2.5 rounded-xl border border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.04] cursor-pointer text-white/50 hover:text-white/70 transition-colors text-[0.58rem] font-bold uppercase tracking-[0.06em]"
-                    >
-                      Return to Sanctuary
-                    </button>
-                    <button
-                      onClick={handleExitRecovery}
-                      className="px-4 py-2.5 rounded-xl border border-transparent bg-white hover:bg-white/90 cursor-pointer text-black transition-colors text-[0.58rem] font-bold uppercase tracking-[0.06em]"
-                    >
-                      Exit to Workspace
-                    </button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Small UI atoms
+   ───────────────────────────────────────────────────────────── */
+function PanelHeader({ title }: { title: string }) {
+  return (
+    <div style={{
+      fontFamily: FONT_UI,
+      fontWeight: 400,
+      fontSize: "9.5px",
+      letterSpacing: "0.36em",
+      textTransform: "uppercase",
+      color: PAL.textMut,
+      paddingBottom: 10,
+      borderBottom: `1px solid ${PAL.hair}`,
+    }}>
+      {title}
+    </div>
+  );
+}
+
+function SessionRow({ label, value, mono, dim }: { label: string; value: string; mono?: boolean; dim?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <span style={{
+        fontFamily: FONT_UI,
+        fontWeight: 300,
+        fontSize: "10px",
+        letterSpacing: "0.20em",
+        textTransform: "uppercase",
+        color: PAL.textMut,
+      }}>
+        {label}
+      </span>
+      <span style={{
+        fontFamily: mono ? FONT_UI : FONT_DISPLAY,
+        fontWeight: mono ? 300 : 400,
+        fontSize: mono ? "12px" : "14px",
+        color: dim ? PAL.textMut : PAL.text,
+        fontVariantNumeric: mono ? "tabular-nums" : "normal",
+        letterSpacing: mono ? "0.04em" : "0.01em",
+      }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function PillButton({
+  children, onClick, primary, disabled,
+}: { children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="transition-all"
+      style={{
+        fontFamily: FONT_UI,
+        fontWeight: 400,
+        fontSize: "11px",
+        letterSpacing: "0.20em",
+        textTransform: "uppercase",
+        color: disabled ? "rgba(140,170,210,0.25)" : primary ? PAL.text : PAL.textDim,
+        padding: "11px 24px",
+        borderRadius: 40,
+        border: `1px solid ${primary ? "rgba(100,170,240,0.45)" : "rgba(74,143,196,0.30)"}`,
+        background: primary ? "rgba(74,143,196,0.18)" : "rgba(74,143,196,0.08)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        transition: "all 0.35s ease",
+        boxShadow: primary ? `0 0 24px rgba(74,143,196,0.25)` : "none",
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        (e.currentTarget as HTMLButtonElement).style.background = primary
+          ? "rgba(74,143,196,0.28)" : "rgba(74,143,196,0.18)";
+      }}
+      onMouseLeave={(e) => {
+        if (disabled) return;
+        (e.currentTarget as HTMLButtonElement).style.background = primary
+          ? "rgba(74,143,196,0.18)" : "rgba(74,143,196,0.08)";
+      }}
+    >
+      {children}
+    </button>
   );
 }
