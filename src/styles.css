@@ -1,6 +1,12 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=DM+Sans:wght@200;300;400;500&display=swap");
+
+:root {
+  --font-sanctuary-display: "Cormorant Garamond", ui-serif, Georgia, serif;
+  --font-sanctuary-ui: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
 
 @custom-variant dark (&:is(.dark *));
 
