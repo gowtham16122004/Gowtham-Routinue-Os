@@ -1,0 +1,97 @@
+/* src/styles/deepMode.css */
+
+:root {
+  --deep-bg: hsl(240, 15%, 8%);
+  --deep-primary: hsl(260, 80%, 55%);
+  --deep-accent: hsl(190, 70%, 55%);
+}
+
+/* Fullscreen overlay */
+.deep-mode-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--deep-bg);
+  overflow: hidden;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Fog particles */
+.fog {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.08), transparent 70%);
+  animation: fogFloat 30s linear infinite;
+}
+@keyframes fogFloat {
+  0% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-20%) scale(1.1); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Ambient glow */
+.ambient-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.03), transparent 80%);
+  pointer-events: none;
+}
+
+/* Light streaks */
+.light-streak {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, var(--deep-primary), transparent);
+  opacity: 0.6;
+  filter: blur(2px);
+  animation: streakMove 12s linear infinite;
+}
+@keyframes streakMove {
+  0% { transform: translateX(-20%); }
+  100% { transform: translateX(120%); }
+}
+
+/* Focus Reactor container */
+.focus-reactor {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Rings */
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--deep-primary);
+  opacity: 0.4;
+  animation: ringPulse 8s ease-in-out infinite;
+}
+@keyframes ringPulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+
+/* AI bubble */
+.ai-bubble {
+  position: absolute;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(4px);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: var(--deep-accent);
+  animation: bubbleFade 6s ease-in-out infinite;
+}
+@keyframes bubbleFade {
+  0%, 100% { opacity: 0; transform: translateY(10px); }
+  50% { opacity: 1; transform: translateY(0); }
+}
+
+/* Import into main stylesheet */
+@import "./deepMode.css";
