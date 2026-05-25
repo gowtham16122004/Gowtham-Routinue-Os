@@ -64,22 +64,30 @@ function RecoveryEnvironment({ orbScale, phase, active }: EnvProps) {
       p: Math.random() * Math.PI * 2,
     }));
 
-    // Rising particles
-    const parts = Array.from({ length: 60 }, () => ({
+    // Rising atmospheric dust
+    const parts = Array.from({ length: 110 }, () => ({
       x: Math.random(),
       y: Math.random(),
-      vy: 0.00018 + Math.random() * 0.00035,
-      r: Math.random() * 1.4 + 0.3,
-      a: Math.random() * 0.35 + 0.08,
+      vy: 0.00012 + Math.random() * 0.00045,
+      vx: (Math.random() - 0.5) * 0.00006,
+      r: Math.random() * 1.4 + 0.25,
+      a: Math.random() * 0.35 + 0.06,
       p: Math.random() * Math.PI * 2,
     }));
 
     // Fog bands
     const fogBands = [
-      { y: 0.58, h: 0.18, speed: 0.000020, off: 0,     alpha: 0.10 },
-      { y: 0.62, h: 0.22, speed: 0.000035, off: 200,   alpha: 0.08 },
-      { y: 0.66, h: 0.16, speed: 0.000055, off: 400,   alpha: 0.07 },
-      { y: 0.70, h: 0.14, speed: 0.000080, off: 600,   alpha: 0.06 },
+      { y: 0.56, h: 0.20, speed: 0.000018, off: 0,     alpha: 0.12 },
+      { y: 0.60, h: 0.24, speed: 0.000032, off: 200,   alpha: 0.10 },
+      { y: 0.64, h: 0.18, speed: 0.000050, off: 400,   alpha: 0.08 },
+      { y: 0.69, h: 0.15, speed: 0.000074, off: 600,   alpha: 0.06 },
+    ];
+
+    // Aurora ribbons (slow drift across upper sky)
+    const aurora = [
+      { y: 0.18, amp: 28, freq: 0.0035, speed: 0.00012, hue: "rgba(120,200,210,", alpha: 0.07 },
+      { y: 0.26, amp: 40, freq: 0.0025, speed: 0.00008, hue: "rgba(160,140,220,", alpha: 0.05 },
+      { y: 0.34, amp: 22, freq: 0.0045, speed: 0.00016, hue: "rgba(90,170,240,",  alpha: 0.06 },
     ];
 
     let raf = 0;
