@@ -664,10 +664,10 @@ function ToolSubPanel({ tool }: { tool: keyof typeof SUBPANELS }) {
 type MetricKey = "fatigue" | "cortisol" | "para" | "hrv";
 interface Metric { key: MetricKey; label: string; value: number; dir: -1 | 1; }
 const INITIAL_METRICS: Metric[] = [
-  { key: "fatigue",  label: "Cognitive Fatigue",     value: 72, dir: -1 },
-  { key: "cortisol", label: "Cortisol Level",        value: 58, dir: -1 },
-  { key: "para",     label: "Parasympathetic Tone",  value: 34, dir:  1 },
-  { key: "hrv",      label: "HRV Coherence",         value: 28, dir:  1 },
+  { key: "fatigue",  label: "Nervous System",        value: 72, dir: -1 },
+  { key: "cortisol", label: "Cortisol Dissolving",   value: 58, dir: -1 },
+  { key: "para",     label: "Breathing Coherence",   value: 34, dir:  1 },
+  { key: "hrv",      label: "Heart Stabilizing",     value: 28, dir:  1 },
 ];
 
 /* ─────────────────────────────────────────────────────────────
