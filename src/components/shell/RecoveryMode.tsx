@@ -664,6 +664,7 @@ export function RecoveryMode() {
     return 0.55;
   })();
   const orbScale = useSmoothScale(targetScale);
+  useVoiceGuide(breath.phase, running);
 
   const handleBegin = useCallback(() => {
     if (running) return;
