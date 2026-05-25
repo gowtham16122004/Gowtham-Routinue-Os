@@ -221,29 +221,42 @@ function RecoveryEnvironment({ orbScale, phase, active }: EnvProps) {
       ctx.fillStyle = PAL.water;
       ctx.fillRect(0, H * 0.78, W, H * 0.22);
 
-      // Water shimmer tied to orb scale
-      const shimmerA = 0.04 + (os - 0.55) * 0.10;
+      // Water shimmer — multi-band, grows with orb scale (alive feeling)
+      const shimmerA = 0.05 + (os - 0.55) * 0.16;
       ctx.fillStyle = `rgba(120,170,230,${shimmerA})`;
-      for (let i = 0; i < 14; i++) {
-        const y = H * 0.80 + i * (H * 0.018);
-        const wob = Math.sin(t * 0.0006 + i * 0.7) * 6;
-        ctx.fillRect(W * 0.20 + wob, y, W * 0.60, 0.6);
+      for (let i = 0; i < 22; i++) {
+        const y = H * 0.795 + i * (H * 0.014);
+        const wob = Math.sin(t * 0.0006 + i * 0.7) * (6 + i * 0.4);
+        const wid = W * (0.55 + 0.04 * Math.sin(t * 0.0004 + i));
+        ctx.fillRect(W * 0.5 - wid / 2 + wob, y, wid, 0.55);
       }
 
       // Moon reflection on water
       const ry = H * 0.82;
-      const rg = ctx.createRadialGradient(cx, ry, 0, cx, ry, W * 0.22);
-      rg.addColorStop(0, `rgba(180,210,250,${0.18 + lift * 0.10})`);
+      const rg = ctx.createRadialGradient(cx, ry, 0, cx, ry, W * 0.24);
+      rg.addColorStop(0, `rgba(180,210,250,${0.20 + lift * 0.12})`);
       rg.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = rg;
       ctx.fillRect(0, H * 0.78, W, H * 0.22);
 
-      // Rising particles
+      // Orb glow reflection in water (breathing reflection)
+      const orbRefY = H * 0.86;
+      const orbRefR = (W * 0.18) * (0.6 + (os - 0.55) * 0.9);
+      const og2 = ctx.createRadialGradient(W * 0.5, orbRefY, 0, W * 0.5, orbRefY, orbRefR);
+      const orbRefA = 0.08 + (os - 0.55) * 0.18;
+      og2.addColorStop(0, `rgba(100,170,240,${orbRefA * (ac ? 1 : 0.4)})`);
+      og2.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = og2;
+      ctx.fillRect(0, H * 0.78, W, H * 0.22);
+
+      // Atmospheric dust — drifting particles with horizontal sway
       for (const p of parts) {
-        const speed = ph === "inhale" ? 1.6 : ph === "exhale" ? 0.7 : 1.0;
+        const speed = ph === "inhale" ? 1.5 : ph === "exhale" ? 0.65 : 1.0;
         p.y -= p.vy * dt * speed;
+        p.x += p.vx * dt;
         if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
-        // alpha fades at top/bottom edges
+        if (p.x < -0.05) p.x = 1.05;
+        if (p.x > 1.05) p.x = -0.05;
         const edge = Math.min(1, Math.min(p.y, 1 - p.y) * 4);
         const flick = 0.6 + 0.4 * Math.sin(t * 0.001 + p.p);
         ctx.fillStyle = `rgba(200,225,255,${p.a * edge * flick * (ac ? 1 : 0.6)})`;
