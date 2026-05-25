@@ -955,43 +955,57 @@ export function RecoveryMode() {
                 </AnimatePresence>
               </div>
 
-              {/* Orb (CSS scaled to 160) */}
-              <div
-                style={{
-                  width: 160, height: 160,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transform: "scale(1)",
-                }}
-              >
-                <div style={{ transform: "scale(0.5)", transformOrigin: "center" }}>
-                  <BreathingOrbCanvas scale={orbScale} phase={breath.phase} active={running} />
-                </div>
-              </div>
+              {/* Orb OR Tool sub-panel */}
+              <AnimatePresence mode="wait">
+                {activeTool === "Breathwork" ? (
+                  <motion.div
+                    key="orb-block"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.6 }}
+                    className="flex flex-col items-center"
+                  >
+                    <div
+                      style={{
+                        width: 160, height: 160,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      <div style={{ transform: "scale(0.5)", transformOrigin: "center" }}>
+                        <BreathingOrbCanvas scale={orbScale} phase={breath.phase} active={running} />
+                      </div>
+                    </div>
 
-              {/* Timer beneath orb */}
-              <div className="mt-10 text-center">
-                <div style={{
-                  fontFamily: FONT_DISPLAY,
-                  fontWeight: 300,
-                  fontSize: "64px",
-                  lineHeight: 1,
-                  letterSpacing: "0.04em",
-                  color: PAL.text,
-                }}>
-                  {running ? breath.phaseSecondsLeft : "—"}
-                </div>
-                <div style={{
-                  fontFamily: FONT_UI,
-                  fontWeight: 300,
-                  fontSize: "10px",
-                  letterSpacing: "0.36em",
-                  textTransform: "uppercase",
-                  color: PAL.textMut,
-                  marginTop: 14,
-                }}>
-                  {protocol.name} · cycle {breath.cycle}
-                </div>
-              </div>
+                    <div className="mt-10 text-center">
+                      <div style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontWeight: 300,
+                        fontSize: "64px",
+                        lineHeight: 1,
+                        letterSpacing: "0.04em",
+                        color: PAL.text,
+                      }}>
+                        {running ? breath.phaseSecondsLeft : "—"}
+                      </div>
+                      <div style={{
+                        fontFamily: FONT_UI,
+                        fontWeight: 300,
+                        fontSize: "10px",
+                        letterSpacing: "0.36em",
+                        textTransform: "uppercase",
+                        color: PAL.textMut,
+                        marginTop: 14,
+                      }}>
+                        {protocol.name} · cycle {breath.cycle}
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <ToolSubPanel key={activeTool} tool={activeTool as keyof typeof SUBPANELS} />
+                )}
+              </AnimatePresence>
+
 
               {/* Controls */}
               <div className="mt-12 flex items-center gap-3">
