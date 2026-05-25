@@ -571,18 +571,6 @@ function ToolSubPanel({ tool }: { tool: keyof typeof SUBPANELS }) {
 }
 
 
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      cur.current += (tgt.current - cur.current) * 0.04;
-      setScale(cur.current);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  return scale;
-}
 
 /* ─────────────────────────────────────────────────────────────
    Biometric Stream — evolves per cycle
