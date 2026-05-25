@@ -939,38 +939,59 @@ export function RecoveryMode() {
 
               <div className="mt-8">
                 <PanelHeader title="Atmosphere" />
-                <div className="flex flex-col gap-1 mt-3">
+                <div className="flex flex-col gap-1.5 mt-3">
                   {AMBIENT_PRESETS.slice(0, 6).map((s) => {
                     const on = audio.current === s.id && audio.active;
+                    const tint = ATMOSPHERE_TINT[s.id] ?? ATMOSPHERE_TINT.default;
                     return (
-                      <button
+                      <motion.button
                         key={s.id}
                         onClick={() => audioControls.toggle(s.id as AmbientSound)}
-                        className="text-left cursor-pointer flex items-center justify-between"
+                        whileHover={{ x: 2 }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        className="text-left cursor-pointer relative overflow-hidden"
                         style={{
-                          background: "transparent",
-                          border: "none",
-                          padding: "6px 0",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: `1px solid ${on ? tint.border : "rgba(100,140,200,0.05)"}`,
+                          background: on
+                            ? `linear-gradient(135deg, ${tint.bgA} 0%, ${tint.bgB} 100%)`
+                            : "rgba(100,140,200,0.02)",
+                          transition: "all 0.6s ease",
                         }}
                       >
-                        <span style={{
-                          fontFamily: FONT_DISPLAY,
-                          fontWeight: 300,
-                          fontSize: "14px",
-                          color: on ? PAL.text : PAL.textDim,
-                          letterSpacing: "0.02em",
-                        }}>
-                          {s.label}
-                        </span>
-                        <span style={{
-                          width: 6, height: 6, borderRadius: 999,
-                          background: on ? PAL.blueHi : "rgba(100,140,200,0.18)",
-                          boxShadow: on ? `0 0 10px ${PAL.blueHi}` : "none",
-                        }} />
-                      </button>
+                        {on && (
+                          <motion.div
+                            className="absolute inset-0 pointer-events-none"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: [0.3, 0.55, 0.3] }}
+                            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                            style={{
+                              background: `radial-gradient(ellipse at 20% 50%, ${tint.glow} 0%, transparent 70%)`,
+                            }}
+                          />
+                        )}
+                        <div className="relative flex items-center justify-between">
+                          <span style={{
+                            fontFamily: FONT_DISPLAY,
+                            fontWeight: 300,
+                            fontSize: "14px",
+                            color: on ? PAL.text : PAL.textDim,
+                            letterSpacing: "0.02em",
+                          }}>
+                            {s.label}
+                          </span>
+                          <span style={{
+                            width: 5, height: 5, borderRadius: 999,
+                            background: on ? tint.dot : "rgba(100,140,200,0.18)",
+                            boxShadow: on ? `0 0 10px ${tint.dot}` : "none",
+                          }} />
+                        </div>
+                      </motion.button>
                     );
                   })}
                 </div>
+
 
                 {/* Volume */}
                 <div className="mt-4">
