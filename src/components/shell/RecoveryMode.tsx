@@ -857,6 +857,29 @@ export function RecoveryMode() {
             }}
           />
 
+          {/* Cinematic state overlay — darkens on session start (interface quiets itself) */}
+          <motion.div
+            className="absolute inset-0 pointer-events-none"
+            animate={{ opacity: running ? 1 : 0 }}
+            transition={{ duration: 3.5, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              zIndex: 2,
+              background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.45) 90%)",
+            }}
+          />
+
+          {/* Completion warmth — sunrise tint after sustained restoration */}
+          <motion.div
+            className="absolute inset-0 pointer-events-none"
+            animate={{ opacity: breath.cycle >= 6 ? 1 : 0 }}
+            transition={{ duration: 6, ease: "easeInOut" }}
+            style={{
+              zIndex: 3,
+              background: "linear-gradient(180deg, transparent 0%, transparent 55%, rgba(255,180,120,0.06) 78%, rgba(255,200,140,0.10) 100%)",
+            }}
+          />
+
+
           {/* HUD: exit */}
           <motion.button
             onClick={handleExit}
