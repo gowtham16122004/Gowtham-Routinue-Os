@@ -279,17 +279,29 @@ function BreathingOrbCanvas({ scale, phase, active }: OrbProps) {
       ctx.fillStyle = og;
       ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI * 2); ctx.fill();
 
-      // Layer 4 — waveform below the orb (amplitude tied to scale)
+      // Layer 4 — twin soft waveforms below orb (NEVER white)
       ctx.save();
-      ctx.strokeStyle = `rgba(150,200,250,${0.20 + (s - 0.55) * 0.5})`;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
+      const scaleFactor = Math.max(0.3, s);
       const wy = cy + baseR + 50;
       const amp = 6 + (s - 0.55) * 28;
+
+      // Primary wave
+      ctx.strokeStyle = `rgba(80, 150, 220, ${0.15 * scaleFactor})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
       for (let x = 20; x <= SIZE - 20; x += 2) {
-        const px = x;
         const py = wy + Math.sin((x / 16) + now * 0.002) * amp;
-        if (x === 20) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        if (x === 20) ctx.moveTo(x, py); else ctx.lineTo(x, py);
+      }
+      ctx.stroke();
+
+      // Depth wave (offset, softer)
+      ctx.strokeStyle = `rgba(60, 120, 195, ${0.08 * scaleFactor})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      for (let x = 20; x <= SIZE - 20; x += 2) {
+        const py = (wy + 10) + Math.sin((x / 16) + now * 0.002 + 0.4) * (amp * 0.5);
+        if (x === 20) ctx.moveTo(x, py); else ctx.lineTo(x, py);
       }
       ctx.stroke();
       ctx.restore();
@@ -363,6 +375,202 @@ function useSmoothScale(target: number) {
   }, []);
   return scale;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Voice Breathing Guide (Web Speech API)
+   ───────────────────────────────────────────────────────────── */
+function pickVoice(): SpeechSynthesisVoice | null {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  const preferredNames = ["Samantha", "Karen", "Moira", "Google UK English Female", "Microsoft Zira"];
+  for (const name of preferredNames) {
+    const v = voices.find(v => v.name.includes(name));
+    if (v) return v;
+  }
+  const enFemale = voices.find(v => /en[-_]/i.test(v.lang) && /female/i.test(v.name));
+  if (enFemale) return enFemale;
+  const enUS = voices.find(v => v.lang === "en-US");
+  return enUS ?? voices.find(v => v.lang.startsWith("en")) ?? null;
+}
+
+function useVoiceGuide(phase: BreathPhase, running: boolean) {
+  const lastSpoken = useRef<BreathPhase | "">("");
+  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const load = () => { voiceRef.current = pickVoice(); };
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+    return () => {
+      if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    if (!running) {
+      window.speechSynthesis.cancel();
+      lastSpoken.current = "";
+      return;
+    }
+    if (phase === "rest") return;
+    if (lastSpoken.current === phase) return;
+    lastSpoken.current = phase;
+    const word = phase === "inhale" ? "Inhale" : phase === "hold" ? "Hold" : "Exhale";
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word);
+    u.rate = 0.72;
+    u.pitch = 0.80;
+    u.volume = 0.90;
+    if (voiceRef.current) u.voice = voiceRef.current;
+    window.speechSynthesis.speak(u);
+  }, [phase, running]);
+
+  useEffect(() => () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Tool sub-panel content
+   ───────────────────────────────────────────────────────────── */
+function speak(text: string) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.72;
+  u.pitch = 0.80;
+  u.volume = 0.90;
+  const v = pickVoice();
+  if (v) u.voice = v;
+  window.speechSynthesis.speak(u);
+}
+
+interface SubPanelItem { title: string; guidance: string; }
+const SUBPANELS: Record<string, { heading: string; items: SubPanelItem[] }> = {
+  Meditation: {
+    heading: "Meditation",
+    items: [
+      { title: "Breath Awareness",   guidance: "Rest attention on the natural breath. Follow each inhale, each exhale, without changing them." },
+      { title: "Thought Observation",guidance: "Watch thoughts arise and pass like clouds. You are the sky, not the weather." },
+      { title: "Body Softening",     guidance: "Sweep gentle awareness through the body. Soften the jaw, the shoulders, the hands." },
+      { title: "Visualisation",      guidance: "Picture still water under moonlight. Let the image hold you. Become part of the scene." },
+    ],
+  },
+  "Sleep Prep": {
+    heading: "Sleep Preparation",
+    items: [
+      { title: "Progressive Release", guidance: "Tense each muscle group for five seconds, then release completely. Move from feet to crown." },
+      { title: "Cognitive Offload",   guidance: "Name each unfinished thought, then place it gently outside the room until morning." },
+      { title: "4-8 Sleep Breath",    guidance: "Inhale for four counts. Exhale for eight. The long exhale signals the body to descend." },
+      { title: "Body Heaviness",      guidance: "Imagine each limb growing warm and heavy, sinking deeper into the surface beneath you." },
+    ],
+  },
+  "Body Scan": {
+    heading: "Body Scan",
+    items: [
+      { title: "Crown → Forehead",  guidance: "Bring awareness to the crown of the head. Soften the forehead. Release the space behind the eyes." },
+      { title: "Jaw → Shoulders",   guidance: "Unclench the jaw. Let the tongue rest. Allow the shoulders to drop away from the ears." },
+      { title: "Chest → Heart",     guidance: "Feel the breath move through the chest. Sense the steady rhythm beneath the ribs." },
+      { title: "Core → Legs",       guidance: "Soften the belly. Release the hips. Let the legs grow heavy, grounded, supported." },
+    ],
+  },
+  Gratitude: {
+    heading: "Gratitude Reflection",
+    items: [
+      { title: "A Person",       guidance: "Bring to mind someone who shaped you. Hold their face. Feel the warmth of that connection." },
+      { title: "A Moment",       guidance: "Recall a single moment of beauty from today. The light, the sound, the feeling of being there." },
+      { title: "Your Body",      guidance: "Thank the body for carrying you. The breath that continues. The heart that has never stopped." },
+      { title: "Your Progress", guidance: "Acknowledge how far you have come. Every quiet effort. Every breath that brought you here." },
+    ],
+  },
+};
+
+function ToolSubPanel({ tool }: { tool: keyof typeof SUBPANELS }) {
+  const cfg = SUBPANELS[tool];
+  const [selected, setSelected] = useState<number | null>(null);
+  useEffect(() => { setSelected(null); }, [tool]);
+
+  return (
+    <motion.div
+      key={tool}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      className="flex flex-col items-center"
+      style={{ width: "100%", maxWidth: 480 }}
+    >
+      <h2 style={{
+        fontFamily: FONT_DISPLAY,
+        fontWeight: 300,
+        fontSize: "22px",
+        letterSpacing: "0.03em",
+        color: PAL.text,
+        marginBottom: 28,
+      }}>
+        {cfg.heading}
+      </h2>
+
+      <div className="flex flex-col gap-2 w-full">
+        {cfg.items.map((it, i) => {
+          const on = selected === i;
+          return (
+            <button
+              key={it.title}
+              onClick={() => { setSelected(i); speak(it.guidance); }}
+              className="text-left cursor-pointer transition-all"
+              style={{
+                background: on ? "rgba(74,143,196,0.08)" : "transparent",
+                border: `1px solid ${on ? "rgba(100,140,200,0.18)" : "rgba(100,140,200,0.06)"}`,
+                borderRadius: 12,
+                padding: "14px 18px",
+              }}
+            >
+              <div style={{
+                fontFamily: FONT_DISPLAY,
+                fontWeight: 400,
+                fontSize: "16px",
+                color: on ? PAL.text : PAL.textDim,
+                letterSpacing: "0.02em",
+              }}>
+                {it.title}
+              </div>
+              <AnimatePresence>
+                {on && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.5 }}
+                    style={{
+                      fontFamily: FONT_DISPLAY,
+                      fontStyle: "italic",
+                      fontWeight: 300,
+                      fontSize: "13.5px",
+                      lineHeight: 1.55,
+                      color: PAL.textDim,
+                      marginTop: 8,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {it.guidance}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </button>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+
 
 /* ─────────────────────────────────────────────────────────────
    Biometric Stream — evolves per cycle
@@ -457,6 +665,7 @@ export function RecoveryMode() {
     return 0.55;
   })();
   const orbScale = useSmoothScale(targetScale);
+  useVoiceGuide(breath.phase, running);
 
   const handleBegin = useCallback(() => {
     if (running) return;
@@ -746,43 +955,57 @@ export function RecoveryMode() {
                 </AnimatePresence>
               </div>
 
-              {/* Orb (CSS scaled to 160) */}
-              <div
-                style={{
-                  width: 160, height: 160,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transform: "scale(1)",
-                }}
-              >
-                <div style={{ transform: "scale(0.5)", transformOrigin: "center" }}>
-                  <BreathingOrbCanvas scale={orbScale} phase={breath.phase} active={running} />
-                </div>
-              </div>
+              {/* Orb OR Tool sub-panel */}
+              <AnimatePresence mode="wait">
+                {activeTool === "Breathwork" ? (
+                  <motion.div
+                    key="orb-block"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.6 }}
+                    className="flex flex-col items-center"
+                  >
+                    <div
+                      style={{
+                        width: 160, height: 160,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      <div style={{ transform: "scale(0.5)", transformOrigin: "center" }}>
+                        <BreathingOrbCanvas scale={orbScale} phase={breath.phase} active={running} />
+                      </div>
+                    </div>
 
-              {/* Timer beneath orb */}
-              <div className="mt-10 text-center">
-                <div style={{
-                  fontFamily: FONT_DISPLAY,
-                  fontWeight: 300,
-                  fontSize: "64px",
-                  lineHeight: 1,
-                  letterSpacing: "0.04em",
-                  color: PAL.text,
-                }}>
-                  {running ? breath.phaseSecondsLeft : "—"}
-                </div>
-                <div style={{
-                  fontFamily: FONT_UI,
-                  fontWeight: 300,
-                  fontSize: "10px",
-                  letterSpacing: "0.36em",
-                  textTransform: "uppercase",
-                  color: PAL.textMut,
-                  marginTop: 14,
-                }}>
-                  {protocol.name} · cycle {breath.cycle}
-                </div>
-              </div>
+                    <div className="mt-10 text-center">
+                      <div style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontWeight: 300,
+                        fontSize: "64px",
+                        lineHeight: 1,
+                        letterSpacing: "0.04em",
+                        color: PAL.text,
+                      }}>
+                        {running ? breath.phaseSecondsLeft : "—"}
+                      </div>
+                      <div style={{
+                        fontFamily: FONT_UI,
+                        fontWeight: 300,
+                        fontSize: "10px",
+                        letterSpacing: "0.36em",
+                        textTransform: "uppercase",
+                        color: PAL.textMut,
+                        marginTop: 14,
+                      }}>
+                        {protocol.name} · cycle {breath.cycle}
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <ToolSubPanel key={activeTool} tool={activeTool as keyof typeof SUBPANELS} />
+                )}
+              </AnimatePresence>
+
 
               {/* Controls */}
               <div className="mt-12 flex items-center gap-3">
