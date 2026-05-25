@@ -895,7 +895,7 @@ export function RecoveryMode() {
                 borderRight: `1px solid ${PAL.hair}`,
               }}
             >
-              <PanelHeader title="Protocol" />
+              <PanelHeader title="Restoration Protocol" />
               <div className="flex flex-col gap-1.5 mt-3">
                 {BREATH_PATTERNS.map((p, i) => {
                   const active = patternIdx === i;
