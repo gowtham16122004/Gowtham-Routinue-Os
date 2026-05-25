@@ -279,17 +279,29 @@ function BreathingOrbCanvas({ scale, phase, active }: OrbProps) {
       ctx.fillStyle = og;
       ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI * 2); ctx.fill();
 
-      // Layer 4 — waveform below the orb (amplitude tied to scale)
+      // Layer 4 — twin soft waveforms below orb (NEVER white)
       ctx.save();
-      ctx.strokeStyle = `rgba(150,200,250,${0.20 + (s - 0.55) * 0.5})`;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
+      const scaleFactor = Math.max(0.3, s);
       const wy = cy + baseR + 50;
       const amp = 6 + (s - 0.55) * 28;
+
+      // Primary wave
+      ctx.strokeStyle = `rgba(80, 150, 220, ${0.15 * scaleFactor})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
       for (let x = 20; x <= SIZE - 20; x += 2) {
-        const px = x;
         const py = wy + Math.sin((x / 16) + now * 0.002) * amp;
-        if (x === 20) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        if (x === 20) ctx.moveTo(x, py); else ctx.lineTo(x, py);
+      }
+      ctx.stroke();
+
+      // Depth wave (offset, softer)
+      ctx.strokeStyle = `rgba(60, 120, 195, ${0.08 * scaleFactor})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      for (let x = 20; x <= SIZE - 20; x += 2) {
+        const py = (wy + 10) + Math.sin((x / 16) + now * 0.002 + 0.4) * (amp * 0.5);
+        if (x === 20) ctx.moveTo(x, py); else ctx.lineTo(x, py);
       }
       ctx.stroke();
       ctx.restore();
