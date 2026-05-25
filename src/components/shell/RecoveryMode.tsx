@@ -141,6 +141,31 @@ function RecoveryEnvironment({ orbScale, phase, active }: EnvProps) {
         ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2); ctx.fill();
       }
 
+      // Aurora ribbons — slow drifting bands of color in upper sky
+      ctx.globalCompositeOperation = "screen";
+      for (const a of aurora) {
+        const phaseT = t * a.speed;
+        const yBase = H * a.y;
+        const grad = ctx.createLinearGradient(0, yBase - a.amp, 0, yBase + a.amp);
+        const baseAlpha = a.alpha * (ac ? 1 : 0.55) * (0.7 + 0.3 * Math.sin(t * 0.0004));
+        grad.addColorStop(0, `${a.hue}0)`);
+        grad.addColorStop(0.5, `${a.hue}${baseAlpha})`);
+        grad.addColorStop(1, `${a.hue}0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, yBase);
+        for (let x = 0; x <= W; x += 12) {
+          const y = yBase + Math.sin(x * a.freq + phaseT) * a.amp + Math.sin(x * a.freq * 2.3 + phaseT * 1.7) * (a.amp * 0.35);
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(W, yBase + a.amp);
+        ctx.lineTo(0, yBase + a.amp);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+
+
       // Mountain silhouettes (3 layers, parallax-ish via static path)
       // Far range
       ctx.fillStyle = "rgba(18,30,55,0.85)";
