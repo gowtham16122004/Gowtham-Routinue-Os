@@ -1333,10 +1333,12 @@ function PillButton({
   children, onClick, primary, disabled,
 }: { children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
       disabled={disabled}
-      className="transition-all"
+      whileHover={disabled ? undefined : { scale: 1.04, y: -1 }}
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
       style={{
         fontFamily: FONT_UI,
         fontWeight: 400,
@@ -1350,21 +1352,26 @@ function PillButton({
         background: primary ? "rgba(74,143,196,0.18)" : "rgba(74,143,196,0.08)",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1,
-        transition: "all 0.35s ease",
-        boxShadow: primary ? `0 0 24px rgba(74,143,196,0.25)` : "none",
+        boxShadow: primary ? `0 0 28px rgba(74,143,196,0.30), inset 0 1px 0 rgba(255,255,255,0.05)` : "none",
       }}
       onMouseEnter={(e) => {
         if (disabled) return;
         (e.currentTarget as HTMLButtonElement).style.background = primary
           ? "rgba(74,143,196,0.28)" : "rgba(74,143,196,0.18)";
+        (e.currentTarget as HTMLButtonElement).style.boxShadow = primary
+          ? "0 0 40px rgba(100,170,240,0.45), inset 0 1px 0 rgba(255,255,255,0.08)"
+          : "0 0 18px rgba(74,143,196,0.18)";
       }}
       onMouseLeave={(e) => {
         if (disabled) return;
         (e.currentTarget as HTMLButtonElement).style.background = primary
           ? "rgba(74,143,196,0.18)" : "rgba(74,143,196,0.08)";
+        (e.currentTarget as HTMLButtonElement).style.boxShadow = primary
+          ? "0 0 28px rgba(74,143,196,0.30), inset 0 1px 0 rgba(255,255,255,0.05)" : "none";
       }}
     >
       {children}
-    </button>
+    </motion.button>
   );
 }
+
