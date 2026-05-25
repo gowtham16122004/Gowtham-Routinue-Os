@@ -25,6 +25,21 @@ const PAL = {
 const FONT_DISPLAY = `var(--font-sanctuary-display), "Cormorant Garamond", Georgia, serif`;
 const FONT_UI      = `var(--font-sanctuary-ui), "DM Sans", ui-sans-serif, system-ui`;
 
+/* Per-atmosphere visual identity — emotional color signature for sound cards */
+const ATMOSPHERE_TINT: Record<string, {
+  bgA: string; bgB: string; border: string; glow: string; dot: string;
+}> = {
+  rain:    { bgA: "rgba(70,120,200,0.10)",  bgB: "rgba(40,80,150,0.04)",   border: "rgba(100,160,230,0.22)", glow: "rgba(120,180,240,0.18)", dot: "rgba(160,210,255,0.95)" },
+  ocean:   { bgA: "rgba(30,130,180,0.10)",  bgB: "rgba(20,90,140,0.04)",   border: "rgba(80,180,210,0.22)",  glow: "rgba(100,200,220,0.18)", dot: "rgba(140,220,235,0.95)" },
+  forest:  { bgA: "rgba(50,140,90,0.10)",   bgB: "rgba(30,100,70,0.04)",   border: "rgba(90,180,130,0.22)",  glow: "rgba(120,200,150,0.16)", dot: "rgba(170,235,195,0.95)" },
+  space:   { bgA: "rgba(100,80,200,0.10)",  bgB: "rgba(50,40,130,0.04)",   border: "rgba(140,120,230,0.22)", glow: "rgba(160,140,240,0.18)", dot: "rgba(200,180,255,0.95)" },
+  wind:    { bgA: "rgba(120,170,200,0.10)", bgB: "rgba(70,120,160,0.04)",  border: "rgba(150,200,220,0.22)", glow: "rgba(180,220,240,0.16)", dot: "rgba(200,230,250,0.95)" },
+  healing: { bgA: "rgba(160,90,200,0.10)",  bgB: "rgba(110,50,150,0.04)",  border: "rgba(190,130,230,0.22)", glow: "rgba(210,150,240,0.18)", dot: "rgba(225,180,255,0.95)" },
+  noise:   { bgA: "rgba(145,115,80,0.08)",  bgB: "rgba(90,70,50,0.03)",    border: "rgba(175,140,100,0.20)", glow: "rgba(190,160,120,0.14)", dot: "rgba(225,200,170,0.92)" },
+  night:   { bgA: "rgba(50,70,140,0.10)",   bgB: "rgba(30,40,90,0.04)",    border: "rgba(80,110,190,0.22)",  glow: "rgba(110,140,210,0.16)", dot: "rgba(170,190,240,0.95)" },
+  default: { bgA: "rgba(74,143,196,0.10)",  bgB: "rgba(40,90,150,0.04)",   border: "rgba(100,170,240,0.22)", glow: "rgba(120,180,240,0.16)", dot: "rgba(180,215,250,0.95)" },
+};
+
 /* ─────────────────────────────────────────────────────────────
    Canvas Environment — moon, fog bands, water, particles
    ───────────────────────────────────────────────────────────── */
@@ -64,22 +79,30 @@ function RecoveryEnvironment({ orbScale, phase, active }: EnvProps) {
       p: Math.random() * Math.PI * 2,
     }));
 
-    // Rising particles
-    const parts = Array.from({ length: 60 }, () => ({
+    // Rising atmospheric dust
+    const parts = Array.from({ length: 110 }, () => ({
       x: Math.random(),
       y: Math.random(),
-      vy: 0.00018 + Math.random() * 0.00035,
-      r: Math.random() * 1.4 + 0.3,
-      a: Math.random() * 0.35 + 0.08,
+      vy: 0.00012 + Math.random() * 0.00045,
+      vx: (Math.random() - 0.5) * 0.00006,
+      r: Math.random() * 1.4 + 0.25,
+      a: Math.random() * 0.35 + 0.06,
       p: Math.random() * Math.PI * 2,
     }));
 
     // Fog bands
     const fogBands = [
-      { y: 0.58, h: 0.18, speed: 0.000020, off: 0,     alpha: 0.10 },
-      { y: 0.62, h: 0.22, speed: 0.000035, off: 200,   alpha: 0.08 },
-      { y: 0.66, h: 0.16, speed: 0.000055, off: 400,   alpha: 0.07 },
-      { y: 0.70, h: 0.14, speed: 0.000080, off: 600,   alpha: 0.06 },
+      { y: 0.56, h: 0.20, speed: 0.000018, off: 0,     alpha: 0.12 },
+      { y: 0.60, h: 0.24, speed: 0.000032, off: 200,   alpha: 0.10 },
+      { y: 0.64, h: 0.18, speed: 0.000050, off: 400,   alpha: 0.08 },
+      { y: 0.69, h: 0.15, speed: 0.000074, off: 600,   alpha: 0.06 },
+    ];
+
+    // Aurora ribbons (slow drift across upper sky)
+    const aurora = [
+      { y: 0.18, amp: 28, freq: 0.0035, speed: 0.00012, hue: "rgba(120,200,210,", alpha: 0.07 },
+      { y: 0.26, amp: 40, freq: 0.0025, speed: 0.00008, hue: "rgba(160,140,220,", alpha: 0.05 },
+      { y: 0.34, amp: 22, freq: 0.0045, speed: 0.00016, hue: "rgba(90,170,240,",  alpha: 0.06 },
     ];
 
     let raf = 0;
@@ -132,6 +155,31 @@ function RecoveryEnvironment({ orbScale, phase, active }: EnvProps) {
         ctx.fillStyle = `rgba(220,235,255,${s.a * tw * (ac ? 1 : 0.7)})`;
         ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2); ctx.fill();
       }
+
+      // Aurora ribbons — slow drifting bands of color in upper sky
+      ctx.globalCompositeOperation = "screen";
+      for (const a of aurora) {
+        const phaseT = t * a.speed;
+        const yBase = H * a.y;
+        const grad = ctx.createLinearGradient(0, yBase - a.amp, 0, yBase + a.amp);
+        const baseAlpha = a.alpha * (ac ? 1 : 0.55) * (0.7 + 0.3 * Math.sin(t * 0.0004));
+        grad.addColorStop(0, `${a.hue}0)`);
+        grad.addColorStop(0.5, `${a.hue}${baseAlpha})`);
+        grad.addColorStop(1, `${a.hue}0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, yBase);
+        for (let x = 0; x <= W; x += 12) {
+          const y = yBase + Math.sin(x * a.freq + phaseT) * a.amp + Math.sin(x * a.freq * 2.3 + phaseT * 1.7) * (a.amp * 0.35);
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(W, yBase + a.amp);
+        ctx.lineTo(0, yBase + a.amp);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+
 
       // Mountain silhouettes (3 layers, parallax-ish via static path)
       // Far range
@@ -188,29 +236,42 @@ function RecoveryEnvironment({ orbScale, phase, active }: EnvProps) {
       ctx.fillStyle = PAL.water;
       ctx.fillRect(0, H * 0.78, W, H * 0.22);
 
-      // Water shimmer tied to orb scale
-      const shimmerA = 0.04 + (os - 0.55) * 0.10;
+      // Water shimmer — multi-band, grows with orb scale (alive feeling)
+      const shimmerA = 0.05 + (os - 0.55) * 0.16;
       ctx.fillStyle = `rgba(120,170,230,${shimmerA})`;
-      for (let i = 0; i < 14; i++) {
-        const y = H * 0.80 + i * (H * 0.018);
-        const wob = Math.sin(t * 0.0006 + i * 0.7) * 6;
-        ctx.fillRect(W * 0.20 + wob, y, W * 0.60, 0.6);
+      for (let i = 0; i < 22; i++) {
+        const y = H * 0.795 + i * (H * 0.014);
+        const wob = Math.sin(t * 0.0006 + i * 0.7) * (6 + i * 0.4);
+        const wid = W * (0.55 + 0.04 * Math.sin(t * 0.0004 + i));
+        ctx.fillRect(W * 0.5 - wid / 2 + wob, y, wid, 0.55);
       }
 
       // Moon reflection on water
       const ry = H * 0.82;
-      const rg = ctx.createRadialGradient(cx, ry, 0, cx, ry, W * 0.22);
-      rg.addColorStop(0, `rgba(180,210,250,${0.18 + lift * 0.10})`);
+      const rg = ctx.createRadialGradient(cx, ry, 0, cx, ry, W * 0.24);
+      rg.addColorStop(0, `rgba(180,210,250,${0.20 + lift * 0.12})`);
       rg.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = rg;
       ctx.fillRect(0, H * 0.78, W, H * 0.22);
 
-      // Rising particles
+      // Orb glow reflection in water (breathing reflection)
+      const orbRefY = H * 0.86;
+      const orbRefR = (W * 0.18) * (0.6 + (os - 0.55) * 0.9);
+      const og2 = ctx.createRadialGradient(W * 0.5, orbRefY, 0, W * 0.5, orbRefY, orbRefR);
+      const orbRefA = 0.08 + (os - 0.55) * 0.18;
+      og2.addColorStop(0, `rgba(100,170,240,${orbRefA * (ac ? 1 : 0.4)})`);
+      og2.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = og2;
+      ctx.fillRect(0, H * 0.78, W, H * 0.22);
+
+      // Atmospheric dust — drifting particles with horizontal sway
       for (const p of parts) {
-        const speed = ph === "inhale" ? 1.6 : ph === "exhale" ? 0.7 : 1.0;
+        const speed = ph === "inhale" ? 1.5 : ph === "exhale" ? 0.65 : 1.0;
         p.y -= p.vy * dt * speed;
+        p.x += p.vx * dt;
         if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
-        // alpha fades at top/bottom edges
+        if (p.x < -0.05) p.x = 1.05;
+        if (p.x > 1.05) p.x = -0.05;
         const edge = Math.min(1, Math.min(p.y, 1 - p.y) * 4);
         const flick = 0.6 + 0.4 * Math.sin(t * 0.001 + p.p);
         ctx.fillStyle = `rgba(200,225,255,${p.a * edge * flick * (ac ? 1 : 0.6)})`;
@@ -306,7 +367,20 @@ function BreathingOrbCanvas({ scale, phase, active }: OrbProps) {
       ctx.stroke();
       ctx.restore();
 
-      // Layer 2 — core sphere (with offset highlight)
+      // Layer 2 — core sphere with subtle liquid distortion
+      ctx.save();
+      ctx.beginPath();
+      const distortAmp = r * 0.012;
+      for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.06) {
+        const wob = Math.sin(a * 3 + now * 0.0009) * distortAmp + Math.sin(a * 5 - now * 0.0006) * (distortAmp * 0.5);
+        const rr = r + wob;
+        const px = cx + Math.cos(a) * rr;
+        const py = cy + Math.sin(a) * rr;
+        if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.clip();
+
       const sg = ctx.createRadialGradient(
         cx - r * 0.30, cy - r * 0.30, r * 0.05,
         cx, cy, r
@@ -316,7 +390,34 @@ function BreathingOrbCanvas({ scale, phase, active }: OrbProps) {
       sg.addColorStop(0.65, "rgba(74,143,196,0.55)");
       sg.addColorStop(1, "rgba(20,50,100,0.20)");
       ctx.fillStyle = sg;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(cx - r * 1.2, cy - r * 1.2, r * 2.4, r * 2.4);
+
+      // Internal floating particles inside orb (life inside)
+      const innerCount = 18;
+      for (let i = 0; i < innerCount; i++) {
+        const ang = (i / innerCount) * Math.PI * 2 + now * 0.0004;
+        const rad = r * (0.15 + 0.6 * ((i * 37) % 100) / 100);
+        const drift = Math.sin(now * 0.0011 + i * 1.3) * (r * 0.08);
+        const px = cx + Math.cos(ang) * rad + drift;
+        const py = cy + Math.sin(ang) * rad - drift * 0.6;
+        const pr = 0.7 + 0.6 * Math.sin(now * 0.0018 + i);
+        const pa = (0.18 + 0.14 * Math.sin(now * 0.0014 + i * 0.7)) * (ac ? 1 : 0.5);
+        ctx.fillStyle = `rgba(220,235,255,${pa})`;
+        ctx.beginPath(); ctx.arc(px, py, Math.max(0.3, pr), 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Liquid sheen highlight band
+      const sheenA = 0.10 + 0.06 * Math.sin(now * 0.001);
+      ctx.fillStyle = `rgba(255,255,255,${sheenA})`;
+      ctx.beginPath();
+      ctx.ellipse(cx - r * 0.25, cy - r * 0.35, r * 0.45, r * 0.18, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Volumetric edge glow (thin luminous rim)
+      ctx.strokeStyle = `rgba(160,210,255,${0.28 * (ac ? 1 : 0.5)})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(cx, cy, r * 1.005, 0, Math.PI * 2); ctx.stroke();
 
       // Inner rim shadow for spherical depth
       ctx.strokeStyle = "rgba(10,20,40,0.30)";
@@ -578,10 +679,10 @@ function ToolSubPanel({ tool }: { tool: keyof typeof SUBPANELS }) {
 type MetricKey = "fatigue" | "cortisol" | "para" | "hrv";
 interface Metric { key: MetricKey; label: string; value: number; dir: -1 | 1; }
 const INITIAL_METRICS: Metric[] = [
-  { key: "fatigue",  label: "Cognitive Fatigue",     value: 72, dir: -1 },
-  { key: "cortisol", label: "Cortisol Level",        value: 58, dir: -1 },
-  { key: "para",     label: "Parasympathetic Tone",  value: 34, dir:  1 },
-  { key: "hrv",      label: "HRV Coherence",         value: 28, dir:  1 },
+  { key: "fatigue",  label: "Nervous System",        value: 72, dir: -1 },
+  { key: "cortisol", label: "Cortisol Dissolving",   value: 58, dir: -1 },
+  { key: "para",     label: "Breathing Coherence",   value: 34, dir:  1 },
+  { key: "hrv",      label: "Heart Stabilizing",     value: 28, dir:  1 },
 ];
 
 /* ─────────────────────────────────────────────────────────────
@@ -724,7 +825,7 @@ export function RecoveryMode() {
   const protocol = BREATH_PATTERNS[patternIdx];
 
   // CTA label
-  const ctaLabel = running ? "Running" : paused ? "Resume" : "Begin Session";
+  const ctaLabel = running ? "Entering Restoration" : paused ? "Resume" : "Begin Session";
 
   return (
     <AnimatePresence>
@@ -755,6 +856,29 @@ export function RecoveryMode() {
                 "radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.55) 100%)",
             }}
           />
+
+          {/* Cinematic state overlay — darkens on session start (interface quiets itself) */}
+          <motion.div
+            className="absolute inset-0 pointer-events-none"
+            animate={{ opacity: running ? 1 : 0 }}
+            transition={{ duration: 3.5, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              zIndex: 2,
+              background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.45) 90%)",
+            }}
+          />
+
+          {/* Completion warmth — sunrise tint after sustained restoration */}
+          <motion.div
+            className="absolute inset-0 pointer-events-none"
+            animate={{ opacity: breath.cycle >= 6 ? 1 : 0 }}
+            transition={{ duration: 6, ease: "easeInOut" }}
+            style={{
+              zIndex: 3,
+              background: "linear-gradient(180deg, transparent 0%, transparent 55%, rgba(255,180,120,0.06) 78%, rgba(255,200,140,0.10) 100%)",
+            }}
+          />
+
 
           {/* HUD: exit */}
           <motion.button
@@ -809,7 +933,7 @@ export function RecoveryMode() {
                 borderRight: `1px solid ${PAL.hair}`,
               }}
             >
-              <PanelHeader title="Protocol" />
+              <PanelHeader title="Restoration Protocol" />
               <div className="flex flex-col gap-1.5 mt-3">
                 {BREATH_PATTERNS.map((p, i) => {
                   const active = patternIdx === i;
@@ -853,38 +977,59 @@ export function RecoveryMode() {
 
               <div className="mt-8">
                 <PanelHeader title="Atmosphere" />
-                <div className="flex flex-col gap-1 mt-3">
+                <div className="flex flex-col gap-1.5 mt-3">
                   {AMBIENT_PRESETS.slice(0, 6).map((s) => {
                     const on = audio.current === s.id && audio.active;
+                    const tint = ATMOSPHERE_TINT[s.id] ?? ATMOSPHERE_TINT.default;
                     return (
-                      <button
+                      <motion.button
                         key={s.id}
                         onClick={() => audioControls.toggle(s.id as AmbientSound)}
-                        className="text-left cursor-pointer flex items-center justify-between"
+                        whileHover={{ x: 2 }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        className="text-left cursor-pointer relative overflow-hidden"
                         style={{
-                          background: "transparent",
-                          border: "none",
-                          padding: "6px 0",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: `1px solid ${on ? tint.border : "rgba(100,140,200,0.05)"}`,
+                          background: on
+                            ? `linear-gradient(135deg, ${tint.bgA} 0%, ${tint.bgB} 100%)`
+                            : "rgba(100,140,200,0.02)",
+                          transition: "all 0.6s ease",
                         }}
                       >
-                        <span style={{
-                          fontFamily: FONT_DISPLAY,
-                          fontWeight: 300,
-                          fontSize: "14px",
-                          color: on ? PAL.text : PAL.textDim,
-                          letterSpacing: "0.02em",
-                        }}>
-                          {s.label}
-                        </span>
-                        <span style={{
-                          width: 6, height: 6, borderRadius: 999,
-                          background: on ? PAL.blueHi : "rgba(100,140,200,0.18)",
-                          boxShadow: on ? `0 0 10px ${PAL.blueHi}` : "none",
-                        }} />
-                      </button>
+                        {on && (
+                          <motion.div
+                            className="absolute inset-0 pointer-events-none"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: [0.3, 0.55, 0.3] }}
+                            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                            style={{
+                              background: `radial-gradient(ellipse at 20% 50%, ${tint.glow} 0%, transparent 70%)`,
+                            }}
+                          />
+                        )}
+                        <div className="relative flex items-center justify-between">
+                          <span style={{
+                            fontFamily: FONT_DISPLAY,
+                            fontWeight: 300,
+                            fontSize: "14px",
+                            color: on ? PAL.text : PAL.textDim,
+                            letterSpacing: "0.02em",
+                          }}>
+                            {s.label}
+                          </span>
+                          <span style={{
+                            width: 5, height: 5, borderRadius: 999,
+                            background: on ? tint.dot : "rgba(100,140,200,0.18)",
+                            boxShadow: on ? `0 0 10px ${tint.dot}` : "none",
+                          }} />
+                        </div>
+                      </motion.button>
                     );
                   })}
                 </div>
+
 
                 {/* Volume */}
                 <div className="mt-4">
@@ -950,7 +1095,7 @@ export function RecoveryMode() {
                         : breath.phase === "hold" ? "Hold"
                         : breath.phase === "exhale" ? "Exhale"
                         : "Rest")
-                      : paused ? "Paused" : "Stillness"}
+                      : paused ? "Paused" : "Awaiting"}
                   </motion.div>
                 </AnimatePresence>
               </div>
@@ -1126,7 +1271,7 @@ export function RecoveryMode() {
                   color: PAL.textMut,
                   letterSpacing: "0.01em",
                 }}>
-                  Still water. Quiet mind. You have arrived somewhere safe.
+                  The nervous system is recovering. Stay. Breathe. You have arrived.
                 </div>
               </div>
             </aside>
@@ -1188,10 +1333,12 @@ function PillButton({
   children, onClick, primary, disabled,
 }: { children: React.ReactNode; onClick?: () => void; primary?: boolean; disabled?: boolean }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
       disabled={disabled}
-      className="transition-all"
+      whileHover={disabled ? undefined : { scale: 1.04, y: -1 }}
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
       style={{
         fontFamily: FONT_UI,
         fontWeight: 400,
@@ -1205,21 +1352,26 @@ function PillButton({
         background: primary ? "rgba(74,143,196,0.18)" : "rgba(74,143,196,0.08)",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1,
-        transition: "all 0.35s ease",
-        boxShadow: primary ? `0 0 24px rgba(74,143,196,0.25)` : "none",
+        boxShadow: primary ? `0 0 28px rgba(74,143,196,0.30), inset 0 1px 0 rgba(255,255,255,0.05)` : "none",
       }}
       onMouseEnter={(e) => {
         if (disabled) return;
         (e.currentTarget as HTMLButtonElement).style.background = primary
           ? "rgba(74,143,196,0.28)" : "rgba(74,143,196,0.18)";
+        (e.currentTarget as HTMLButtonElement).style.boxShadow = primary
+          ? "0 0 40px rgba(100,170,240,0.45), inset 0 1px 0 rgba(255,255,255,0.08)"
+          : "0 0 18px rgba(74,143,196,0.18)";
       }}
       onMouseLeave={(e) => {
         if (disabled) return;
         (e.currentTarget as HTMLButtonElement).style.background = primary
           ? "rgba(74,143,196,0.18)" : "rgba(74,143,196,0.08)";
+        (e.currentTarget as HTMLButtonElement).style.boxShadow = primary
+          ? "0 0 28px rgba(74,143,196,0.30), inset 0 1px 0 rgba(255,255,255,0.05)" : "none";
       }}
     >
       {children}
-    </button>
+    </motion.button>
   );
 }
+
