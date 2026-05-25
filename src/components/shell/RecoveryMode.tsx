@@ -25,6 +25,21 @@ const PAL = {
 const FONT_DISPLAY = `var(--font-sanctuary-display), "Cormorant Garamond", Georgia, serif`;
 const FONT_UI      = `var(--font-sanctuary-ui), "DM Sans", ui-sans-serif, system-ui`;
 
+/* Per-atmosphere visual identity — emotional color signature for sound cards */
+const ATMOSPHERE_TINT: Record<string, {
+  bgA: string; bgB: string; border: string; glow: string; dot: string;
+}> = {
+  rain:    { bgA: "rgba(70,120,200,0.10)",  bgB: "rgba(40,80,150,0.04)",   border: "rgba(100,160,230,0.22)", glow: "rgba(120,180,240,0.18)", dot: "rgba(160,210,255,0.95)" },
+  ocean:   { bgA: "rgba(30,130,180,0.10)",  bgB: "rgba(20,90,140,0.04)",   border: "rgba(80,180,210,0.22)",  glow: "rgba(100,200,220,0.18)", dot: "rgba(140,220,235,0.95)" },
+  forest:  { bgA: "rgba(50,140,90,0.10)",   bgB: "rgba(30,100,70,0.04)",   border: "rgba(90,180,130,0.22)",  glow: "rgba(120,200,150,0.16)", dot: "rgba(170,235,195,0.95)" },
+  space:   { bgA: "rgba(100,80,200,0.10)",  bgB: "rgba(50,40,130,0.04)",   border: "rgba(140,120,230,0.22)", glow: "rgba(160,140,240,0.18)", dot: "rgba(200,180,255,0.95)" },
+  wind:    { bgA: "rgba(120,170,200,0.10)", bgB: "rgba(70,120,160,0.04)",  border: "rgba(150,200,220,0.22)", glow: "rgba(180,220,240,0.16)", dot: "rgba(200,230,250,0.95)" },
+  healing: { bgA: "rgba(160,90,200,0.10)",  bgB: "rgba(110,50,150,0.04)",  border: "rgba(190,130,230,0.22)", glow: "rgba(210,150,240,0.18)", dot: "rgba(225,180,255,0.95)" },
+  noise:   { bgA: "rgba(145,115,80,0.08)",  bgB: "rgba(90,70,50,0.03)",    border: "rgba(175,140,100,0.20)", glow: "rgba(190,160,120,0.14)", dot: "rgba(225,200,170,0.92)" },
+  night:   { bgA: "rgba(50,70,140,0.10)",   bgB: "rgba(30,40,90,0.04)",    border: "rgba(80,110,190,0.22)",  glow: "rgba(110,140,210,0.16)", dot: "rgba(170,190,240,0.95)" },
+  default: { bgA: "rgba(74,143,196,0.10)",  bgB: "rgba(40,90,150,0.04)",   border: "rgba(100,170,240,0.22)", glow: "rgba(120,180,240,0.16)", dot: "rgba(180,215,250,0.95)" },
+};
+
 /* ─────────────────────────────────────────────────────────────
    Canvas Environment — moon, fog bands, water, particles
    ───────────────────────────────────────────────────────────── */
