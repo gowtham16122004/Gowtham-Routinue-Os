@@ -1212,7 +1212,7 @@ export function RecoveryMode() {
                   color: PAL.textMut,
                   letterSpacing: "0.01em",
                 }}>
-                  Still water. Quiet mind. You have arrived somewhere safe.
+                  The nervous system is recovering. Stay. Breathe. You have arrived.
                 </div>
               </div>
             </aside>
