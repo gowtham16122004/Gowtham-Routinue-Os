@@ -352,7 +352,20 @@ function BreathingOrbCanvas({ scale, phase, active }: OrbProps) {
       ctx.stroke();
       ctx.restore();
 
-      // Layer 2 — core sphere (with offset highlight)
+      // Layer 2 — core sphere with subtle liquid distortion
+      ctx.save();
+      ctx.beginPath();
+      const distortAmp = r * 0.012;
+      for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.06) {
+        const wob = Math.sin(a * 3 + now * 0.0009) * distortAmp + Math.sin(a * 5 - now * 0.0006) * (distortAmp * 0.5);
+        const rr = r + wob;
+        const px = cx + Math.cos(a) * rr;
+        const py = cy + Math.sin(a) * rr;
+        if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.clip();
+
       const sg = ctx.createRadialGradient(
         cx - r * 0.30, cy - r * 0.30, r * 0.05,
         cx, cy, r
@@ -362,7 +375,34 @@ function BreathingOrbCanvas({ scale, phase, active }: OrbProps) {
       sg.addColorStop(0.65, "rgba(74,143,196,0.55)");
       sg.addColorStop(1, "rgba(20,50,100,0.20)");
       ctx.fillStyle = sg;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(cx - r * 1.2, cy - r * 1.2, r * 2.4, r * 2.4);
+
+      // Internal floating particles inside orb (life inside)
+      const innerCount = 18;
+      for (let i = 0; i < innerCount; i++) {
+        const ang = (i / innerCount) * Math.PI * 2 + now * 0.0004;
+        const rad = r * (0.15 + 0.6 * ((i * 37) % 100) / 100);
+        const drift = Math.sin(now * 0.0011 + i * 1.3) * (r * 0.08);
+        const px = cx + Math.cos(ang) * rad + drift;
+        const py = cy + Math.sin(ang) * rad - drift * 0.6;
+        const pr = 0.7 + 0.6 * Math.sin(now * 0.0018 + i);
+        const pa = (0.18 + 0.14 * Math.sin(now * 0.0014 + i * 0.7)) * (ac ? 1 : 0.5);
+        ctx.fillStyle = `rgba(220,235,255,${pa})`;
+        ctx.beginPath(); ctx.arc(px, py, Math.max(0.3, pr), 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Liquid sheen highlight band
+      const sheenA = 0.10 + 0.06 * Math.sin(now * 0.001);
+      ctx.fillStyle = `rgba(255,255,255,${sheenA})`;
+      ctx.beginPath();
+      ctx.ellipse(cx - r * 0.25, cy - r * 0.35, r * 0.45, r * 0.18, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Volumetric edge glow (thin luminous rim)
+      ctx.strokeStyle = `rgba(160,210,255,${0.28 * (ac ? 1 : 0.5)})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(cx, cy, r * 1.005, 0, Math.PI * 2); ctx.stroke();
 
       // Inner rim shadow for spherical depth
       ctx.strokeStyle = "rgba(10,20,40,0.30)";
