@@ -363,6 +363,19 @@ function useSmoothScale(target: number) {
   const tgt = useRef(target);
   useEffect(() => { tgt.current = target; }, [target]);
 
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      cur.current += (tgt.current - cur.current) * 0.04;
+      setScale(cur.current);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return scale;
+}
+
 /* ─────────────────────────────────────────────────────────────
    Voice Breathing Guide (Web Speech API)
    ───────────────────────────────────────────────────────────── */
