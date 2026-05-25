@@ -810,7 +810,7 @@ export function RecoveryMode() {
   const protocol = BREATH_PATTERNS[patternIdx];
 
   // CTA label
-  const ctaLabel = running ? "Running" : paused ? "Resume" : "Begin Session";
+  const ctaLabel = running ? "Entering Restoration" : paused ? "Resume" : "Begin Session";
 
   return (
     <AnimatePresence>
