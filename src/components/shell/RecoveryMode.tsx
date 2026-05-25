@@ -1036,7 +1036,7 @@ export function RecoveryMode() {
                         : breath.phase === "hold" ? "Hold"
                         : breath.phase === "exhale" ? "Exhale"
                         : "Rest")
-                      : paused ? "Paused" : "Stillness"}
+                      : paused ? "Paused" : "Awaiting"}
                   </motion.div>
                 </AnimatePresence>
               </div>
