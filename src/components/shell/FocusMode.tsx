@@ -765,7 +765,7 @@ export function FocusMode() {
 
                   {/* CONTROLS */}
                   <div className="flex items-end gap-6 mt-10">
-                    <ControlButton size={44} onClick={() => addTime(15)} label="+15 min" disabled={isIdle && sessionStatus === "idle" && activeSession !== "deep-work"}>
+                    <ControlButton size={44} onClick={() => addTime(15)} label="+15 min" disabled={sessionStatus === "idle"}>
                       <span style={{ fontSize: 18, color: PAL.text }}>＋</span>
                     </ControlButton>
                     <ControlButton size={58} primary onClick={begin} label={isRunning ? "Pause" : isPaused ? "Resume" : "Begin [Space]"}>
