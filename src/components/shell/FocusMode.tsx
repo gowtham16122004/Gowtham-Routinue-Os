@@ -410,7 +410,7 @@ const loadPersisted = (): Persisted => {
 export function FocusMode() {
   const {
     focusMode, setFocusMode, setMode,
-    activeSession, sessionStatus, sessionSeconds, sessionDuration,
+    sessionStatus, sessionSeconds, sessionDuration,
     startSession, pauseSession, resumeSession, endSession, addTime,
   } = useOS();
 
@@ -436,7 +436,7 @@ export function FocusMode() {
 
   const isRunning = sessionStatus === "running";
   const isPaused = sessionStatus === "paused";
-  const isIdle = sessionStatus === "idle" && activeSession !== "deep-work" && !completionShown;
+  const isIdle = sessionStatus === "idle" && !completionShown;
   const elapsed = sessionStatus === "idle" ? 0 : Math.max(0, sessionDuration - sessionSeconds);
   const elapsedRatio = sessionDuration > 0 ? Math.min(1, elapsed / (25 * 60)) : 0;
   const progress = sessionDuration > 0 ? elapsed / sessionDuration : 0;
