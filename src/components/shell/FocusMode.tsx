@@ -29,129 +29,398 @@ const fmtTime = (s: number) => {
 };
 
 /* ──────────────────────────────────────────────
-   Background canvas: ocean trench
+   Background canvas: cinematic deep-ocean trench
+   3000m below — bioluminescence, vents, sonar
    ────────────────────────────────────────────── */
-function OceanCanvas({ running, elapsedRatio }: { running: boolean; elapsedRatio: number }) {
+type FocusStatus = "idle" | "running" | "paused" | "completed";
+function OceanCanvas({
+  status,
+  elapsedRatio,
+}: { status: FocusStatus; elapsedRatio: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const stateRef = useRef({ running, elapsedRatio });
-  useEffect(() => { stateRef.current = { running, elapsedRatio }; }, [running, elapsedRatio]);
+  const stateRef = useRef({ status, elapsedRatio });
+  useEffect(() => { stateRef.current = { status, elapsedRatio }; }, [status, elapsedRatio]);
 
   useEffect(() => {
     const cvs = ref.current; if (!cvs) return;
     const ctx = cvs.getContext("2d"); if (!ctx) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let W = 0, H = 0;
+
+    // ── Terrain silhouettes (generated once per resize) ──
+    type Pt = { x: number; y: number };
+    let backRidge: Pt[] = [];
+    let midRidge: Pt[] = [];
+    let frontRidge: Pt[] = [];
+    let vent1: Pt = { x: 0, y: 0 };
+    let vent2: Pt = { x: 0, y: 0 };
+
+    const buildTerrain = () => {
+      // Back ridge — dramatic geological profile, occupies bottom 35%
+      const baseY = H * 0.65;
+      backRidge = [];
+      // canyon left, volcanic ridge centre-left, plain centre, sharp ridge centre-right, slope right
+      const profile: Array<[number, number]> = [
+        [0.00, 0.20],   // left edge — drop into canyon
+        [0.08, 0.55],   // deep canyon floor
+        [0.16, 0.50],
+        [0.24, 0.10],   // volcanic ridge peak (up = lower y)
+        [0.30, 0.28],
+        [0.40, 0.42],   // abyssal plain start
+        [0.52, 0.44],   // flat plain
+        [0.60, 0.38],
+        [0.68, -0.05],  // sharp ridge — tallest
+        [0.74, 0.18],
+        [0.82, 0.30],
+        [0.90, 0.42],
+        [1.00, 0.55],   // gradual slope
+      ];
+      profile.forEach(([fx, fy]) => backRidge.push({ x: fx * W, y: baseY + fy * H * 0.30 }));
+
+      // Mid ridge — slightly in front, lighter
+      midRidge = [];
+      const midBase = H * 0.78;
+      const midProfile: Array<[number, number]> = [
+        [0.00, 0.40],
+        [0.10, 0.20],
+        [0.22, 0.32],
+        [0.34, 0.05],
+        [0.46, 0.18],
+        [0.58, 0.28],
+        [0.70, 0.10],
+        [0.82, 0.22],
+        [0.92, 0.34],
+        [1.00, 0.28],
+      ];
+      midProfile.forEach(([fx, fy]) => midRidge.push({ x: fx * W, y: midBase + fy * H * 0.18 }));
+
+      // Front ridge — bottom 12%, lightest, jagged
+      frontRidge = [];
+      const frontBase = H * 0.88;
+      const frontProfile: Array<[number, number]> = [
+        [0.00, 0.30],
+        [0.08, 0.10],
+        [0.16, 0.40],
+        [0.26, 0.15],
+        [0.36, 0.45],
+        [0.46, 0.20],
+        [0.56, 0.40],
+        [0.66, 0.10],
+        [0.76, 0.35],
+        [0.86, 0.18],
+        [0.94, 0.42],
+        [1.00, 0.25],
+      ];
+      frontProfile.forEach(([fx, fy]) => frontRidge.push({ x: fx * W, y: frontBase + fy * H * 0.12 }));
+
+      // Hydrothermal vents — base of ridges
+      // main vent: bottom of centre-right sharp ridge
+      vent1 = { x: W * 0.68, y: baseY + 0.18 * H * 0.30 + 12 };
+      // secondary vent: smaller, left side near terrain
+      vent2 = { x: W * 0.16, y: midBase + 0.22 * H * 0.18 + 6 };
+    };
+
+    // ── Organisms ──
+    interface OrgA { x:number; y:number; vx:number; vy:number; r:number; base:number; pulse:number; off:number; }
+    interface OrgB { x:number; y:number; vx:number; vy:number; r:number; base:number; pulse:number; off:number; }
+    interface OrgC { x:number; y:number; vx:number; vy:number; r:number; base:number; }
+    let typeA: OrgA[] = [];
+    let typeB: OrgB[] = [];
+    let typeC: OrgC[] = [];
+
+    const initOrganisms = () => {
+      typeA = Array.from({ length: 8 }, () => ({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.16,
+        vy: (Math.random() - 0.5) * 0.12,
+        r: 3 + Math.random() * 3,
+        base: 0.3 + Math.random() * 0.3,
+        pulse: 0.4 + Math.random() * 1.1, // period 2-5s
+        off: Math.random() * Math.PI * 2,
+      }));
+      typeB = Array.from({ length: 15 }, () => ({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.30,
+        vy: (Math.random() - 0.5) * 0.24,
+        r: 1.5 + Math.random() * 1.5,
+        base: 0.2 + Math.random() * 0.25,
+        pulse: 0.6 + Math.random() * 1.4,
+        off: Math.random() * Math.PI * 2,
+      }));
+      typeC = Array.from({ length: 80 }, () => ({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.16,
+        vy: -(0.05 + Math.random() * 0.07),
+        r: 0.5 + Math.random() * 1.0,
+        base: 0.1 + Math.random() * 0.25,
+      }));
+    };
+
+    // ── Sonar rings ──
+    interface Ring { r: number; alpha: number; lineWidth: number; }
+    const rings: Ring[] = [{ r: 80, alpha: 1, lineWidth: 1 }];
+    let ringTimer = 0;
+
+    // ── Smoothed state values ──
+    let speedMul = 1, opMul = 1, sonarOpMul = 1, deepMul = 1, ventMul = 1, darkenMul = 1;
+    let prevStatus: FocusStatus = "idle";
+    let completionT = 0; // frames since completion
+    let bigRingActive = false;
+    let bigRing = { r: 0, alpha: 0 };
+
     const resize = () => {
       W = cvs.clientWidth; H = cvs.clientHeight;
       cvs.width = W * dpr; cvs.height = H * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildTerrain();
+      initOrganisms();
     };
     resize();
     const ro = new ResizeObserver(resize); ro.observe(cvs);
 
-    interface P { x:number; y:number; vx:number; vy:number; r:number; a:number; phase:number; life:number; max:number; }
-    const mkParticle = (edge = false): P => {
-      const a = Math.random() * 0.35 + 0.1;
-      let x = Math.random() * W, y = Math.random() * H;
-      if (edge) {
-        const side = Math.floor(Math.random() * 4);
-        if (side === 0) { x = -10; y = Math.random() * H; }
-        else if (side === 1) { x = W + 10; y = Math.random() * H; }
-        else if (side === 2) { x = Math.random() * W; y = -10; }
-        else { x = Math.random() * W; y = H + 10; }
+    // Helper: draw a closed terrain shape from points + bottom corners, filled with gradient
+    const drawTerrain = (pts: Pt[], topColor: string, botColor: string) => {
+      if (pts.length < 2) return;
+      const topY = Math.min(...pts.map(p => p.y));
+      const grad = ctx.createLinearGradient(0, topY, 0, H);
+      grad.addColorStop(0, topColor);
+      grad.addColorStop(1, botColor);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length - 1; i++) {
+        const xc = (pts[i].x + pts[i + 1].x) / 2;
+        const yc = (pts[i].y + pts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
       }
-      return {
-        x, y,
-        vx: (Math.random() - 0.5) * 0.18,
-        vy: (Math.random() - 0.5) * 0.18,
-        r: Math.random() * 1.4 + 0.8,
-        a,
-        phase: Math.random() * Math.PI * 2,
-        life: 0,
-        max: Math.random() * 1400 + 800,
-      };
+      const last = pts[pts.length - 1];
+      ctx.lineTo(last.x, last.y);
+      ctx.lineTo(W, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+      ctx.fill();
     };
-    const particles: P[] = Array.from({ length: 120 }, () => mkParticle(false));
 
-    interface Ring { r:number; alpha:number; }
-    const rings: Ring[] = [];
-    let ringTimer = 0;
-
-    let t = 0;
+    let t = 0; // seconds (≈ frames * 0.008 / time-domain feel — actually we use t as smooth counter)
     let raf = 0;
-    const loop = () => {
-      t += 1;
-      const { running, elapsedRatio } = stateRef.current;
-      const speedMul = running ? 1.8 : 1;
-      const opMul = running ? 1.5 : 1;
-      const densityBoost = 1 + 0.4 * elapsedRatio;
-      const darkenBoost = 1 - 0.08 * elapsedRatio;
 
-      // Layer 1: gradient base
+    const loop = () => {
+      t += 0.008;
+      const { status, elapsedRatio } = stateRef.current;
+
+      // Status transitions
+      if (status !== prevStatus) {
+        if (status === "completed") { completionT = 0; bigRingActive = true; bigRing = { r: 80, alpha: 0.6 }; }
+        prevStatus = status;
+      }
+
+      // Targets per state
+      const isRun = status === "running";
+      const isDone = status === "completed";
+      const targetSpeed = isRun ? 1.6 : (isDone ? 0.2 : 1);
+      const targetOp = isRun ? 1.4 : 1;
+      const targetSonarOp = isRun ? 1.4 : 1;
+      const targetDeep = isRun ? 1.5 : 1;
+      const targetVent = isRun ? 1.3 : 1;
+      const targetDarken = isRun ? 0.96 : 1;
+      speedMul   += (targetSpeed   - speedMul)   * 0.02;
+      opMul      += (targetOp      - opMul)      * 0.02;
+      sonarOpMul += (targetSonarOp - sonarOpMul) * 0.02;
+      deepMul    += (targetDeep    - deepMul)    * 0.02;
+      ventMul    += (targetVent    - ventMul)    * 0.02;
+      darkenMul  += (targetDarken  - darkenMul)  * 0.02;
+
+      // ── Layer 1: deep water base ──
       const grad = ctx.createLinearGradient(0, 0, 0, H);
-      const shade = (hex: string) => {
-        // simple darken by darkenBoost
-        const r = parseInt(hex.slice(1,3),16) * darkenBoost;
-        const g = parseInt(hex.slice(3,5),16) * darkenBoost;
-        const b = parseInt(hex.slice(5,7),16) * darkenBoost;
-        return `rgb(${r|0},${g|0},${b|0})`;
-      };
-      grad.addColorStop(0, shade(PAL.bg));
-      grad.addColorStop(0.5, shade(PAL.bgMid));
-      grad.addColorStop(1, shade(PAL.bgBot));
+      grad.addColorStop(0,    "#010508");
+      grad.addColorStop(0.30, "#020c12");
+      grad.addColorStop(0.60, "#031018");
+      grad.addColorStop(1,    "#020810");
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
-      // Layer 2: depth pulse rings
+      if (darkenMul < 1) {
+        ctx.fillStyle = `rgba(0,0,0,${(1 - darkenMul) * 1.2})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // ── Layer 8: surface shimmer (top 4%) — drawn before terrain so deep light overlays it not vice versa; actually keep at top of stack visually but draw early since it's translucent on bg ──
+      {
+        const shimmerOp = 0.04 + Math.sin(t * 50 * 0.4) * 0.015;
+        const xShift = Math.sin(t * 50 * 0.25) * 10;
+        const sH = H * 0.04;
+        const sg = ctx.createLinearGradient(0, 0, 0, sH);
+        sg.addColorStop(0, `rgba(13,79,92,${Math.max(0, shimmerOp)})`);
+        sg.addColorStop(1, "rgba(13,79,92,0)");
+        ctx.fillStyle = sg;
+        ctx.fillRect(xShift - 20, 0, W + 40, sH);
+      }
+
+      // ── Layer 4: water column depth haze (drawn under terrain, over base) ──
+      const bands: Array<[number, number, string, number, number, number]> = [
+        [0.20, 0.15, "13,79,92",  0.025, 0.2,  0],
+        [0.40, 0.12, "10,60,75",  0.030, 0.15, 1],
+        [0.58, 0.10, "8,45,58",   0.035, 0.18, 2],
+        [0.72, 0.08, "6,35,45",   0.040, 0.22, 3],
+      ];
+      bands.forEach(([yf, hf, rgb, op, spd, off], i) => {
+        const direction = i % 2 === 0 ? 1 : -1;
+        const drift = Math.sin(t * 50 * spd + off) * (30 - i * 5) * direction;
+        const y = H * yf;
+        const h = H * hf;
+        const bg = ctx.createLinearGradient(0, y, 0, y + h);
+        bg.addColorStop(0,    `rgba(${rgb},${op})`);
+        bg.addColorStop(1,    `rgba(${rgb},0)`);
+        ctx.fillStyle = bg;
+        ctx.fillRect(drift - 40, y, W + 80, h);
+      });
+
+      // ── Layer 6: distant deep light (under terrain so terrain occludes it visually at floor) ──
+      {
+        const deepOp = (0.85 + Math.sin(t * 50 * (Math.PI * 2 / 8)) * 0.15) * deepMul;
+        const dx = W * 0.5;
+        const dy = H * 1.1;
+        const rOuter = H * 0.45;
+        const dg = ctx.createRadialGradient(dx, dy, 0, dx, dy, rOuter);
+        dg.addColorStop(0,    `rgba(26,154,170,${0.08 * deepOp})`);
+        dg.addColorStop(0.40, `rgba(13,79,92,${0.04 * deepOp})`);
+        dg.addColorStop(1,    "rgba(13,79,92,0)");
+        ctx.fillStyle = dg;
+        ctx.fillRect(0, H * 0.4, W, H * 0.6);
+      }
+
+      // ── Layer 2: ocean floor silhouettes — back, mid, front ──
+      drawTerrain(backRidge,  "#061420", "#020a10");
+
+      // Vent glows BEHIND mid ridge (so they shimmer up from behind front layers a bit)
+      // ── Layer 3: hydrothermal vents ──
+      const drawVent = (v: Pt, scale: number, period: number, phase: number) => {
+        const pulse = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(t * 50 * (Math.PI * 2 / period) + phase));
+        const intensity = pulse * ventMul;
+        const radius = 80 * scale;
+        const vg = ctx.createRadialGradient(v.x, v.y, 0, v.x, v.y, radius);
+        vg.addColorStop(0,    `rgba(26,154,170,${0.18 * intensity})`);
+        vg.addColorStop(0.5,  `rgba(13,79,92,${0.08 * intensity})`);
+        vg.addColorStop(1,    "rgba(13,79,92,0)");
+        ctx.fillStyle = vg;
+        ctx.fillRect(v.x - radius, v.y - radius, radius * 2, radius * 2);
+
+        // Rising heat shimmer — 3 wobbly vertical bars
+        const shimmerH = 120 * scale;
+        for (let k = 0; k < 3; k++) {
+          const baseX = v.x + (k - 1) * 10 * scale;
+          const wobble = Math.sin(t * 50 * 0.6 + k * 1.3 + phase) * 6 * scale;
+          const sg = ctx.createLinearGradient(0, v.y - shimmerH, 0, v.y);
+          sg.addColorStop(0, "rgba(26,154,170,0)");
+          sg.addColorStop(1, `rgba(26,154,170,${0.06 * intensity})`);
+          ctx.fillStyle = sg;
+          ctx.fillRect(baseX + wobble - 1, v.y - shimmerH, 2, shimmerH);
+        }
+      };
+      drawVent(vent1, 1.0, 3.0, 0);
+      drawVent(vent2, 0.5, 4.5, 1.4);
+
+      drawTerrain(midRidge,   "#081a28", "#02101a");
+      drawTerrain(frontRidge, "#0a2030", "#03121c");
+
+      // ── Layer 7: sonar pulse rings (centre) ──
       ringTimer += 1;
-      if (ringTimer > 240) { ringTimer = 0; rings.push({ r: 20, alpha: 1 }); }
+      const spawnEvery = (isRun ? 1.5 : 3.0) * 60; // frames at 60fps
+      if (ringTimer >= spawnEvery) { ringTimer = 0; rings.push({ r: 80, alpha: 1, lineWidth: 1 }); }
       const cx = W / 2, cy = H / 2;
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];
-        r.r += 0.3;
-        r.alpha = Math.max(0, 1 - r.r / Math.max(W, H));
+        r.r += 0.5;
+        r.alpha = Math.max(0, 1 - (r.r - 80) / Math.max(W, H));
         if (r.alpha <= 0.001) { rings.splice(i, 1); continue; }
-        const baseAlpha = 0.04 * (1 + 0.5 * elapsedRatio);
+        const baseAlpha = 0.08 * sonarOpMul;
         ctx.strokeStyle = `rgba(26,154,170,${baseAlpha * r.alpha})`;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = r.lineWidth;
         ctx.beginPath();
-        ctx.ellipse(cx, cy, r.r, r.r * 0.7, 0, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r.r, 0, Math.PI * 2);
         ctx.stroke();
       }
 
-      // Layer 4: drifting horizontal haze bands
-      [0.3, 0.55, 0.75].forEach((yf, i) => {
-        const drift = Math.sin(t * 0.003 + i) * 60;
-        const y = H * yf;
-        const g2 = ctx.createLinearGradient(0, y - 40, 0, y + 40);
-        g2.addColorStop(0, "rgba(13,79,92,0)");
-        g2.addColorStop(0.5, "rgba(13,79,92,0.04)");
-        g2.addColorStop(1, "rgba(13,79,92,0)");
-        ctx.fillStyle = g2;
-        ctx.fillRect(drift - 100, y - 40, W + 200, 80);
-      });
+      // Completion: one big ring expanding over ~4s (240 frames)
+      if (bigRingActive) {
+        completionT += 1;
+        const dur = 240;
+        const p = Math.min(1, completionT / dur);
+        bigRing.r = 80 + p * Math.max(W, H) * 0.9;
+        bigRing.alpha = 0.6 * (1 - p);
+        ctx.strokeStyle = `rgba(26,154,170,${0.12 * (1 - p) + 0.04})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, bigRing.r, 0, Math.PI * 2);
+        ctx.stroke();
+        if (p >= 1) bigRingActive = false;
+      }
 
-      // Layer 3: bioluminescent particles
-      const target = Math.floor(120 * densityBoost);
-      while (particles.length < target) particles.push(mkParticle(true));
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.life += 1;
+      // ── Layer 5: bioluminescent organisms ──
+      // Type C — plankton field
+      for (const p of typeC) {
         p.x += p.vx * speedMul;
         p.y += p.vy * speedMul;
-        if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20 || p.life > p.max) {
-          particles.splice(i, 1);
-          if (particles.length < target) particles.push(mkParticle(true));
-          continue;
-        }
-        const lifeFade = Math.sin((p.life / p.max) * Math.PI);
-        const twinkle = 0.6 + 0.4 * Math.sin(t * 0.04 + p.phase);
-        const a = p.a * opMul * lifeFade * twinkle;
+        if (p.y < -5) { p.y = H + 5; p.x = Math.random() * W; }
+        if (p.x < -5) p.x = W + 5;
+        else if (p.x > W + 5) p.x = -5;
+        const a = p.base * opMul;
+        ctx.fillStyle = `rgba(60,180,200,${a})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(80,200,220,${a})`;
         ctx.fill();
       }
+
+      // Type B — medium jelly
+      for (let i = 0; i < typeB.length; i++) {
+        const p = typeB[i];
+        const wob = Math.sin(t * 50 * 0.5 + i) * 0.5;
+        p.x += (p.vx + wob * 0.1) * speedMul;
+        p.y += p.vy * speedMul;
+        if (p.x < -10) p.x = W + 10; else if (p.x > W + 10) p.x = -10;
+        if (p.y < -10) p.y = H + 10; else if (p.y > H + 10) p.y = -10;
+        const pulse = 0.6 + 0.4 * Math.sin(t * 50 * (Math.PI * 2 / (2 + p.pulse)) + p.off);
+        const a = p.base * pulse * opMul;
+        // halo
+        const hr = p.r * 2.5;
+        const hg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, hr);
+        hg.addColorStop(0, `rgba(100,210,230,${a * 0.4})`);
+        hg.addColorStop(1, "rgba(100,210,230,0)");
+        ctx.fillStyle = hg;
+        ctx.fillRect(p.x - hr, p.y - hr, hr * 2, hr * 2);
+        ctx.fillStyle = `rgba(100,210,230,${a})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Type A — large drifters
+      for (let i = 0; i < typeA.length; i++) {
+        const p = typeA[i];
+        const wob = Math.sin(t * 50 * 0.3 + i) * 0.3;
+        p.x += (p.vx + wob * 0.1) * speedMul;
+        p.y += p.vy * speedMul;
+        if (p.x < -15) p.x = W + 15; else if (p.x > W + 15) p.x = -15;
+        if (p.y < -15) p.y = H + 15; else if (p.y > H + 15) p.y = -15;
+        const pulse = 0.6 + 0.4 * Math.sin(t * 50 * (Math.PI * 2 / (2 + p.pulse * 2)) + p.off);
+        const a = p.base * pulse * opMul;
+        const hr = p.r * 3.5;
+        const hg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, hr);
+        hg.addColorStop(0, `rgba(80,200,220,${a * 0.4})`);
+        hg.addColorStop(1, "rgba(80,200,220,0)");
+        ctx.fillStyle = hg;
+        ctx.fillRect(p.x - hr, p.y - hr, hr * 2, hr * 2);
+        ctx.fillStyle = `rgba(80,200,220,${a})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // suppress unused warning
+      void elapsedRatio;
 
       raf = requestAnimationFrame(loop);
     };
