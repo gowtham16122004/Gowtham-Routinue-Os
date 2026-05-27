@@ -220,18 +220,20 @@ function OceanCanvas({
       // Targets per state
       const isRun = status === "running";
       const isDone = status === "completed";
-      const targetSpeed = isRun ? 1.6 : (isDone ? 0.2 : 1);
-      const targetOp = isRun ? 1.4 : 1;
-      const targetSonarOp = isRun ? 1.4 : 1;
+      const targetSpeed = isRun ? 2.0 : (isDone ? 0.2 : 1);
+      const targetOp = isRun ? 1.8 : 1;
+      const targetSonarOp = isRun ? 1.55 : 1;   // 0.07 → ~0.11 baseline
       const targetDeep = isRun ? 1.5 : 1;
       const targetVent = isRun ? 1.3 : 1;
-      const targetDarken = isRun ? 0.96 : 1;
-      speedMul   += (targetSpeed   - speedMul)   * 0.02;
-      opMul      += (targetOp      - opMul)      * 0.02;
-      sonarOpMul += (targetSonarOp - sonarOpMul) * 0.02;
-      deepMul    += (targetDeep    - deepMul)    * 0.02;
-      ventMul    += (targetVent    - ventMul)    * 0.02;
-      darkenMul  += (targetDarken  - darkenMul)  * 0.02;
+      const targetDarken = isRun ? 0.94 : 1;
+      // Smooth at ~1.5–3s; pause uses slower lerp via 0.012 (smoother return)
+      const lerp = isRun ? 0.02 : 0.012;
+      speedMul   += (targetSpeed   - speedMul)   * lerp;
+      opMul      += (targetOp      - opMul)      * lerp;
+      sonarOpMul += (targetSonarOp - sonarOpMul) * lerp;
+      deepMul    += (targetDeep    - deepMul)    * lerp;
+      ventMul    += (targetVent    - ventMul)    * lerp;
+      darkenMul  += (targetDarken  - darkenMul)  * lerp;
 
       // ── Layer 1: deep water base ──
       const grad = ctx.createLinearGradient(0, 0, 0, H);
