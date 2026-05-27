@@ -149,19 +149,19 @@ function OceanCanvas({
         pulse: 0.6 + Math.random() * 1.4,
         off: Math.random() * Math.PI * 2,
       }));
-      typeC = Array.from({ length: 80 }, () => ({
+      typeC = Array.from({ length: 150 }, () => ({
         x: Math.random() * W,
         y: Math.random() * H,
-        vx: (Math.random() - 0.5) * 0.16,
-        vy: -(0.05 + Math.random() * 0.07),
-        r: 0.5 + Math.random() * 1.0,
-        base: 0.1 + Math.random() * 0.25,
+        vx: (Math.random() - 0.5) * 0.18,
+        vy: -(0.04 + Math.random() * 0.08),
+        r: 1.0 + Math.random() * 1.8,
+        base: 0.15 + Math.random() * 0.40,
       }));
     };
 
-    // ── Sonar rings ──
+    // ── Sonar rings ── (spawn one immediately so the canvas is alive on load)
     interface Ring { r: number; alpha: number; lineWidth: number; }
-    const rings: Ring[] = [{ r: 80, alpha: 1, lineWidth: 1 }];
+    const rings: Ring[] = [{ r: 0, alpha: 1, lineWidth: 1 }];
     let ringTimer = 0;
 
     // ── Smoothed state values ──
@@ -220,18 +220,20 @@ function OceanCanvas({
       // Targets per state
       const isRun = status === "running";
       const isDone = status === "completed";
-      const targetSpeed = isRun ? 1.6 : (isDone ? 0.2 : 1);
-      const targetOp = isRun ? 1.4 : 1;
-      const targetSonarOp = isRun ? 1.4 : 1;
+      const targetSpeed = isRun ? 2.0 : (isDone ? 0.2 : 1);
+      const targetOp = isRun ? 1.8 : 1;
+      const targetSonarOp = isRun ? 1.55 : 1;   // 0.07 → ~0.11 baseline
       const targetDeep = isRun ? 1.5 : 1;
       const targetVent = isRun ? 1.3 : 1;
-      const targetDarken = isRun ? 0.96 : 1;
-      speedMul   += (targetSpeed   - speedMul)   * 0.02;
-      opMul      += (targetOp      - opMul)      * 0.02;
-      sonarOpMul += (targetSonarOp - sonarOpMul) * 0.02;
-      deepMul    += (targetDeep    - deepMul)    * 0.02;
-      ventMul    += (targetVent    - ventMul)    * 0.02;
-      darkenMul  += (targetDarken  - darkenMul)  * 0.02;
+      const targetDarken = isRun ? 0.94 : 1;
+      // Smooth at ~1.5–3s; pause uses slower lerp via 0.012 (smoother return)
+      const lerp = isRun ? 0.02 : 0.012;
+      speedMul   += (targetSpeed   - speedMul)   * lerp;
+      opMul      += (targetOp      - opMul)      * lerp;
+      sonarOpMul += (targetSonarOp - sonarOpMul) * lerp;
+      deepMul    += (targetDeep    - deepMul)    * lerp;
+      ventMul    += (targetVent    - ventMul)    * lerp;
+      darkenMul  += (targetDarken  - darkenMul)  * lerp;
 
       // ── Layer 1: deep water base ──
       const grad = ctx.createLinearGradient(0, 0, 0, H);
@@ -329,14 +331,16 @@ function OceanCanvas({
       // ── Layer 7: sonar pulse rings (centre) ──
       ringTimer += 1;
       const spawnEvery = (isRun ? 1.5 : 3.0) * 60; // frames at 60fps
-      if (ringTimer >= spawnEvery) { ringTimer = 0; rings.push({ r: 80, alpha: 1, lineWidth: 1 }); }
+      if (ringTimer >= spawnEvery) { ringTimer = 0; rings.push({ r: 0, alpha: 1, lineWidth: 1 }); }
       const cx = W / 2, cy = H / 2;
+      // Completion flash: all current rings brighten ×3 over first ~120 frames
+      const compFlash = bigRingActive ? Math.max(0, 1 - completionT / 120) * 2 : 0;
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];
-        r.r += 0.5;
-        r.alpha = Math.max(0, 1 - (r.r - 80) / Math.max(W, H));
+        r.r += 0.4;
+        r.alpha = Math.max(0, 1 - r.r / Math.max(W, H));
         if (r.alpha <= 0.001) { rings.splice(i, 1); continue; }
-        const baseAlpha = 0.08 * sonarOpMul;
+        const baseAlpha = 0.07 * sonarOpMul * (1 + compFlash);
         ctx.strokeStyle = `rgba(26,154,170,${baseAlpha * r.alpha})`;
         ctx.lineWidth = r.lineWidth;
         ctx.beginPath();
@@ -344,14 +348,14 @@ function OceanCanvas({
         ctx.stroke();
       }
 
-      // Completion: one big ring expanding over ~4s (240 frames)
+      // Completion: one big ring expanding from centre to fill screen over 3s (180 frames)
       if (bigRingActive) {
         completionT += 1;
-        const dur = 240;
+        const dur = 180;
         const p = Math.min(1, completionT / dur);
-        bigRing.r = 80 + p * Math.max(W, H) * 0.9;
-        bigRing.alpha = 0.6 * (1 - p);
-        ctx.strokeStyle = `rgba(26,154,170,${0.12 * (1 - p) + 0.04})`;
+        bigRing.r = p * Math.hypot(W, H) * 0.6;
+        bigRing.alpha = 0.15 * (1 - p);
+        ctx.strokeStyle = `rgba(26,154,170,${bigRing.alpha})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(cx, cy, bigRing.r, 0, Math.PI * 2);
@@ -368,7 +372,7 @@ function OceanCanvas({
         if (p.x < -5) p.x = W + 5;
         else if (p.x > W + 5) p.x = -5;
         const a = p.base * opMul;
-        ctx.fillStyle = `rgba(60,180,200,${a})`;
+        ctx.fillStyle = `rgba(80,200,220,${a})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
@@ -842,6 +846,16 @@ export function FocusMode() {
   // Depth rings (one per 5 min completed)
   const depthRingCount = Math.min(5, Math.floor(elapsed / 300));
 
+  // Achievement pulse when a new depth ring crosses the threshold
+  const [depthAchievement, setDepthAchievement] = useState(0);   // increments on each new ring
+  const prevDepthRef = useRef(0);
+  useEffect(() => {
+    if (depthRingCount > prevDepthRef.current) {
+      setDepthAchievement(a => a + 1);
+    }
+    prevDepthRef.current = depthRingCount;
+  }, [depthRingCount]);
+
   // Panel opacity (mission lock)
   const panelOpacity = isRunning && !edgeHover ? 0.35 : 1;
   const topBarHeight = isRunning ? 32 : 48;
@@ -967,39 +981,74 @@ export function FocusMode() {
           <main className="relative flex flex-col items-center justify-center px-6">
             <AnimatePresence mode="wait">
               {completionShown ? (
-                <motion.div key="complete" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                  className="flex flex-col items-center text-center">
-                  <div style={{ fontSize: 10, letterSpacing: "0.35em", color: PAL.textMut, textTransform: "uppercase", marginBottom: 18 }}>Session Complete</div>
-                  <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 300, fontSize: 48, color: PAL.text, lineHeight: 1 }}>25 minutes of deep work</div>
-                  <div style={{ fontSize: 12, color: PAL.textMut, marginTop: 10 }}>
-                    Cycle {persisted.cycleCount} complete · {persisted.thoughts.length} thoughts captured
-                  </div>
-                  <div className="flex gap-3 mt-10">
-                    <button onClick={gotoRecovery}
-                      style={{ padding: "12px 22px", borderRadius: 999, background: PAL.active, border: `1px solid ${PAL.accent}`, color: PAL.text, fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase" }}>
-                      Begin Recovery
-                    </button>
-                    <button onClick={() => { setCompletionShown(false); }}
-                      style={{ padding: "12px 22px", borderRadius: 999, background: "transparent", border: `1px solid ${PAL.border}`, color: PAL.textMut, fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase" }}>
-                      Start New Session
-                    </button>
-                  </div>
+                <motion.div key="complete"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  transition={{ duration: 1.0, ease: "easeOut" }}
+                  className="flex flex-col items-center text-center"
+                  style={{
+                    padding: "48px 32px",
+                    borderRadius: 24,
+                    background: "rgba(2,10,14,0.88)",
+                  }}>
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8, delay: 0.5, ease: "easeOut" }}
+                    className="flex flex-col items-center">
+                    <div style={{ fontSize: 10, letterSpacing: "0.35em", color: PAL.textMut, textTransform: "uppercase", marginBottom: 18 }}>Session Complete</div>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 300, fontSize: 48, color: PAL.text, lineHeight: 1 }}>25 minutes of deep work</div>
+                    <div style={{ fontSize: 12, color: PAL.textMut, marginTop: 10 }}>
+                      Cycle {persisted.cycleCount} complete · {persisted.thoughts.length} thoughts captured
+                    </div>
+                    <div className="flex gap-3 mt-10">
+                      <button onClick={gotoRecovery}
+                        style={{ padding: "12px 22px", borderRadius: 999, background: PAL.active, border: `1px solid ${PAL.accent}`, color: PAL.text, fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase" }}>
+                        Begin Recovery
+                      </button>
+                      <button onClick={() => { setCompletionShown(false); }}
+                        style={{ padding: "12px 22px", borderRadius: 999, background: "transparent", border: `1px solid ${PAL.border}`, color: PAL.textMut, fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase" }}>
+                        Start New Session
+                      </button>
+                    </div>
+                  </motion.div>
                 </motion.div>
               ) : (
                 <motion.div key="chamber" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="flex flex-col items-center">
                   {/* TIMER RING */}
                   <div className="relative" style={{ width: 280, height: 280 }}>
-                    {/* depth rings expanding */}
+                    {/* radial backdrop glow — always on, intensifies when running */}
+                    <motion.div
+                      className="absolute pointer-events-none rounded-full"
+                      style={{
+                        width: 320, height: 320, left: -20, top: -20,
+                        background: `radial-gradient(circle, rgba(26,154,170,${isRunning ? 0.12 : 0.06}) 0%, rgba(26,154,170,0) 70%)`,
+                        filter: "blur(8px)",
+                      }}
+                      animate={{ opacity: isRunning ? 1 : [0.7, 1, 0.7] }}
+                      transition={{ duration: isRunning ? 1.2 : 6, repeat: isRunning ? 0 : Infinity, ease: "easeInOut" }}
+                    />
+                    {/* depth rings expanding — each is an "earned" ring */}
                     {Array.from({ length: depthRingCount }).map((_, i) => (
                       <motion.div key={i}
-                        initial={{ scale: 1, opacity: 0.4 }}
-                        animate={{ scale: 1 + (i + 1) * 0.18, opacity: 0 }}
-                        transition={{ duration: 6, repeat: Infinity, ease: "easeOut", delay: i * 0.8 }}
+                        initial={{ scale: 1, opacity: 0.35 }}
+                        animate={{ scale: 1 + (i + 1) * 0.22, opacity: 0 }}
+                        transition={{ duration: 300, ease: "linear" }}
                         className="absolute inset-0 rounded-full pointer-events-none"
-                        style={{ border: "1px solid rgba(26,154,170,0.15)" }}
+                        style={{ border: "1px solid rgba(26,154,170,0.35)" }}
                       />
                     ))}
+                    {/* achievement pulse — quick expanding ring on each new depth ring */}
+                    <AnimatePresence>
+                      {depthAchievement > 0 && (
+                        <motion.div key={`ach-${depthAchievement}`}
+                          initial={{ scale: 1, opacity: 0.55 }}
+                          animate={{ scale: 1.8, opacity: 0 }}
+                          transition={{ duration: 3, ease: "easeOut" }}
+                          className="absolute inset-0 rounded-full pointer-events-none"
+                          style={{ border: "1px solid rgba(26,154,170,0.55)" }}
+                        />
+                      )}
+                    </AnimatePresence>
                     {/* inner pulsing rings */}
                     <motion.div className="absolute rounded-full pointer-events-none"
                       style={{ width: 220, height: 220, top: 30, left: 30, border: "1px solid rgba(26,154,170,0.07)" }}
@@ -1010,19 +1059,31 @@ export function FocusMode() {
 
                     <svg width={280} height={280} className="absolute inset-0 -rotate-90">
                       <circle cx={140} cy={140} r={138} fill="none" stroke="rgba(26,154,170,0.12)" strokeWidth={1} />
-                      <circle cx={140} cy={140} r={134} fill="none"
+                      {/* glow bloom behind progress ring — wider, soft, expands when running */}
+                      <motion.circle cx={140} cy={140} r={134} fill="none"
+                        stroke="rgba(26,154,170,0.12)" strokeLinecap="round"
+                        initial={false}
+                        animate={{ strokeWidth: isRunning ? 14 : 8 }}
+                        transition={{ duration: 2, ease: "easeOut" }} />
+                      {/* progress ring — idle breathes, running stays bright */}
+                      <motion.circle cx={140} cy={140} r={134} fill="none"
                         stroke={PAL.ring} strokeWidth={2} strokeLinecap="round"
                         strokeDasharray={2 * Math.PI * 134}
                         strokeDashoffset={2 * Math.PI * 134 * (1 - progress)}
-                        style={{ filter: "drop-shadow(0 0 8px rgba(26,154,170,0.4))", transition: "stroke-dashoffset 0.8s linear" }} />
+                        style={{ filter: "drop-shadow(0 0 8px rgba(26,154,170,0.4))", transition: "stroke-dashoffset 0.8s linear" }}
+                        animate={{ opacity: isRunning ? 0.65 : [0.35, 0.65, 0.35] }}
+                        transition={{ duration: isRunning ? 0.6 : 4, repeat: isRunning ? 0 : Infinity, ease: "easeInOut" }}
+                      />
                     </svg>
 
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <div style={{ fontSize: 10, letterSpacing: "0.35em", color: "rgba(150,200,210,0.5)", textTransform: "uppercase", marginBottom: 8 }}>
                         {isRunning ? "Deep Focus" : isPaused ? "Paused" : "Ready"}
                       </div>
-                      <motion.div key={Math.floor(sessionSeconds || sessionDuration || 1500)}
-                        initial={{ opacity: 0.6 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}
+                      <motion.div key={`num-${depthAchievement}-${Math.floor(sessionSeconds || sessionDuration || 1500)}`}
+                        initial={{ opacity: depthAchievement > 0 && prevDepthRef.current === depthRingCount ? 1 : 0.92 }}
+                        animate={{ opacity: 0.92 }}
+                        transition={{ duration: 1, ease: "easeOut" }}
                         style={{ fontFamily: FONT_DISPLAY, fontWeight: 300, fontSize: 72, color: "rgba(210,238,242,0.92)", lineHeight: 1, letterSpacing: "0.02em" }}>
                         {fmtTime(sessionStatus === "idle" ? (sessionDuration || 25 * 60) : sessionSeconds)}
                       </motion.div>
