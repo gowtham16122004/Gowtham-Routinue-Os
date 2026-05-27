@@ -331,14 +331,16 @@ function OceanCanvas({
       // ── Layer 7: sonar pulse rings (centre) ──
       ringTimer += 1;
       const spawnEvery = (isRun ? 1.5 : 3.0) * 60; // frames at 60fps
-      if (ringTimer >= spawnEvery) { ringTimer = 0; rings.push({ r: 80, alpha: 1, lineWidth: 1 }); }
+      if (ringTimer >= spawnEvery) { ringTimer = 0; rings.push({ r: 0, alpha: 1, lineWidth: 1 }); }
       const cx = W / 2, cy = H / 2;
+      // Completion flash: all current rings brighten ×3 over first ~120 frames
+      const compFlash = bigRingActive ? Math.max(0, 1 - completionT / 120) * 2 : 0;
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];
-        r.r += 0.5;
-        r.alpha = Math.max(0, 1 - (r.r - 80) / Math.max(W, H));
+        r.r += 0.4;
+        r.alpha = Math.max(0, 1 - r.r / Math.max(W, H));
         if (r.alpha <= 0.001) { rings.splice(i, 1); continue; }
-        const baseAlpha = 0.08 * sonarOpMul;
+        const baseAlpha = 0.07 * sonarOpMul * (1 + compFlash);
         ctx.strokeStyle = `rgba(26,154,170,${baseAlpha * r.alpha})`;
         ctx.lineWidth = r.lineWidth;
         ctx.beginPath();
@@ -346,14 +348,14 @@ function OceanCanvas({
         ctx.stroke();
       }
 
-      // Completion: one big ring expanding over ~4s (240 frames)
+      // Completion: one big ring expanding from centre to fill screen over 3s (180 frames)
       if (bigRingActive) {
         completionT += 1;
-        const dur = 240;
+        const dur = 180;
         const p = Math.min(1, completionT / dur);
-        bigRing.r = 80 + p * Math.max(W, H) * 0.9;
-        bigRing.alpha = 0.6 * (1 - p);
-        ctx.strokeStyle = `rgba(26,154,170,${0.12 * (1 - p) + 0.04})`;
+        bigRing.r = p * Math.hypot(W, H) * 0.6;
+        bigRing.alpha = 0.15 * (1 - p);
+        ctx.strokeStyle = `rgba(26,154,170,${bigRing.alpha})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(cx, cy, bigRing.r, 0, Math.PI * 2);
