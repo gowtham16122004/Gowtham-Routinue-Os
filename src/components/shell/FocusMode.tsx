@@ -372,7 +372,7 @@ function OceanCanvas({
         if (p.x < -5) p.x = W + 5;
         else if (p.x > W + 5) p.x = -5;
         const a = p.base * opMul;
-        ctx.fillStyle = `rgba(60,180,200,${a})`;
+        ctx.fillStyle = `rgba(80,200,220,${a})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
