@@ -846,6 +846,16 @@ export function FocusMode() {
   // Depth rings (one per 5 min completed)
   const depthRingCount = Math.min(5, Math.floor(elapsed / 300));
 
+  // Achievement pulse when a new depth ring crosses the threshold
+  const [depthAchievement, setDepthAchievement] = useState(0);   // increments on each new ring
+  const prevDepthRef = useRef(0);
+  useEffect(() => {
+    if (depthRingCount > prevDepthRef.current) {
+      setDepthAchievement(a => a + 1);
+    }
+    prevDepthRef.current = depthRingCount;
+  }, [depthRingCount]);
+
   // Panel opacity (mission lock)
   const panelOpacity = isRunning && !edgeHover ? 0.35 : 1;
   const topBarHeight = isRunning ? 32 : 48;
