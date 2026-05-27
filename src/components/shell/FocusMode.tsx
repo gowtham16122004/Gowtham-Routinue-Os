@@ -149,19 +149,19 @@ function OceanCanvas({
         pulse: 0.6 + Math.random() * 1.4,
         off: Math.random() * Math.PI * 2,
       }));
-      typeC = Array.from({ length: 80 }, () => ({
+      typeC = Array.from({ length: 150 }, () => ({
         x: Math.random() * W,
         y: Math.random() * H,
-        vx: (Math.random() - 0.5) * 0.16,
-        vy: -(0.05 + Math.random() * 0.07),
-        r: 0.5 + Math.random() * 1.0,
-        base: 0.1 + Math.random() * 0.25,
+        vx: (Math.random() - 0.5) * 0.18,
+        vy: -(0.04 + Math.random() * 0.08),
+        r: 1.0 + Math.random() * 1.8,
+        base: 0.15 + Math.random() * 0.40,
       }));
     };
 
-    // ── Sonar rings ──
+    // ── Sonar rings ── (spawn one immediately so the canvas is alive on load)
     interface Ring { r: number; alpha: number; lineWidth: number; }
-    const rings: Ring[] = [{ r: 80, alpha: 1, lineWidth: 1 }];
+    const rings: Ring[] = [{ r: 0, alpha: 1, lineWidth: 1 }];
     let ringTimer = 0;
 
     // ── Smoothed state values ──
