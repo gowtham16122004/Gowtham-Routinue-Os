@@ -856,7 +856,7 @@ export function FocusMode() {
       className="fixed inset-0 overflow-hidden"
       style={{ zIndex: 50, background: PAL.bg, color: PAL.text, fontFamily: FONT_UI }}
     >
-      <OceanCanvas running={isRunning} elapsedRatio={elapsedRatio} />
+      <OceanCanvas status={sessionStatus} elapsedRatio={elapsedRatio} />
 
       {/* Keyflash dim */}
       <AnimatePresence>
