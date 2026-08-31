@@ -53,7 +53,7 @@ export function RecoveryOrb({
     return 0.94;
   };
 
-  const getTransition = (): any => {
+  const getTransition = () => {
     if (phase === "hold") {
       return {
         scale: {
