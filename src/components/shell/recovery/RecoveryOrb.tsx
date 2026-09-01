@@ -67,7 +67,7 @@ export function RecoveryOrb({
     return {
       scale: {
         duration: dur,
-        ease: [0.45, 0.05, 0.25, 1.0], // Breathing respiratory curve
+        ease: [0.45, 0.05, 0.25, 1.0] as const, // Breathing respiratory curve
       }
     };
   };
