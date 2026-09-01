@@ -18,6 +18,7 @@ import { JournalView } from "@/components/views/JournalView";
 import { PlaceholderView } from "@/components/views/PlaceholderView";
 import { IntelligenceView } from "@/components/views/IntelligenceView";
 import { RecoveryMode } from "@/components/shell/RecoveryMode";
+import { ChecklistFullscreen } from "@/components/ChecklistFullscreen";
 
 export const Route = createFileRoute("/")({
   component: Page,
@@ -38,7 +39,7 @@ export function Page() {
 }
 
 function Shell() {
-  const { setCmdOpen, focusMode, mode } = useOS();
+  const { setCmdOpen, focusMode, mode, checklistMode } = useOS();
 
   useEffect(() => {
     const el = document.documentElement;
@@ -59,7 +60,7 @@ function Shell() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* Ambient atmosphere */}
+      {/* Ambient atmosphere — always present */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="fog float-y" style={{ top: -120, left: "10%", width: 520, height: 520 }} />
         <div className="fog float-y" style={{ bottom: -160, right: "10%", width: 600, height: 600, animationDelay: "2s" }} />
@@ -68,20 +69,47 @@ function Shell() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,color-mix(in_oklab,var(--background)_70%,transparent)_100%)]" />
       </div>
 
-      <div className={`flex min-h-screen transition-all duration-700 ${focusMode ? "opacity-0 pointer-events-none scale-[0.98]" : "opacity-100 scale-100"}`} style={{ transformOrigin: "center", transitionTimingFunction: "cubic-bezier(0.22,1,0.36,1)" }}>
-        <Sidebar />
-        <main className="flex-1 min-w-0 flex flex-col">
-          <HeaderBar />
-          <div className="flex-1 px-4 pb-10 md:px-6">
-            <ViewRouter />
-          </div>
-        </main>
-        <ContextPanel />
-      </div>
+      <AnimatePresence mode="wait">
+        {checklistMode ? (
+          /* ─── CHECKLIST WORKSPACE — NOTHING ELSE RENDERS ─── */
+          <motion.div
+            key="checklist-workspace"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="min-h-screen"
+          >
+            <ChecklistFullscreen />
+          </motion.div>
+        ) : (
+          /* ─── NORMAL DASHBOARD ─── */
+          <motion.div
+            key="dashboard-workspace"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="min-h-screen"
+          >
+            <div className={`min-h-screen flex flex-col transition-all duration-700 ${focusMode ? "opacity-0 pointer-events-none scale-[0.98]" : "opacity-100 scale-100"}`} style={{ transformOrigin: "center", transitionTimingFunction: "cubic-bezier(0.22,1,0.36,1)" }}>
+              <main className="flex-1 min-w-0 flex flex-col">
+                <HeaderBar />
+                <div className="flex-1 px-4 pb-10 md:px-6">
+                  <ViewRouter />
+                </div>
+              </main>
+            </div>
 
-      <CommandPalette />
-      <FocusMode />
-      <RecoveryMode />
+            {/* Fixed overlay panels — only visible in dashboard mode */}
+            <Sidebar />
+            <ContextPanel />
+            <CommandPalette />
+            <FocusMode />
+            <RecoveryMode />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

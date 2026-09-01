@@ -31,6 +31,7 @@ export function HeaderBar() {
       <div className="hidden md:flex items-center gap-0.5 rounded-lg bg-white/[0.03] ring-1 ring-border/50 p-0.5 relative">
         {(["operator","deep","recovery"] as const).map(m => {
           const isActive = mode === m;
+          const displayLabel = m === "operator" ? "Routine" : m.charAt(0).toUpperCase() + m.slice(1);
           return (
             <button
               key={m}
@@ -53,7 +54,7 @@ export function HeaderBar() {
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
-              <span className="relative z-10">{m}</span>
+              <span className="relative z-10">{displayLabel}</span>
             </button>
           );
         })}

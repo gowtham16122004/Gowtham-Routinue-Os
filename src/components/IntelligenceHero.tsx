@@ -1,13 +1,13 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
-import { Brain, TrendingUp, TrendingDown, Zap, Sun, ShieldCheck, Sparkles } from "lucide-react";
+import { Brain, TrendingUp, TrendingDown, Zap, Sun, ShieldCheck, Sparkles, ListChecks } from "lucide-react";
 import { getMonthInfo } from "@/lib/habits";
 import { AnimatedCounter, Sparkline, CircularProgress } from "@/components/ui/data-viz";
 import { cn } from "@/lib/utils";
 import { useOS } from "@/lib/os-store";
 
 export function IntelligenceHero() {
-  const { habits, data, mode } = useOS();
+  const { habits, data, mode, setChecklistMode } = useOS();
   const info = useMemo(() => getMonthInfo(), []);
   const today = new Date().getDate();
 
@@ -94,6 +94,16 @@ export function IntelligenceHero() {
               <Chip icon={Sun} label={`Peak Focus · ${m.peakWindow}`} />
               <Chip icon={ShieldCheck} label={`Neural Load · ${m.burnoutRisk}`} />
               <Chip icon={Zap} label={`Energy battery · ${m.energy}`} />
+
+              {/* Open Checklist CTA */}
+              <button
+                id="open-checklist-btn"
+                onClick={() => setChecklistMode(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 ring-1 ring-primary/40 px-3 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/25 hover:ring-primary/60 transition-all duration-200 shadow-[0_0_12px_-4px_color-mix(in_oklab,var(--primary)_50%,transparent)]"
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                Open Checklist
+              </button>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Minus, X, Smile, Meh, Moon, Sparkles } from "lucide-react";
+import { Check, Minus, X, Smile, Meh, Moon, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   getMonthInfo,
   type CellState,
@@ -26,8 +26,11 @@ function CellIcon({ state }: { state: CellState }) {
 }
 
 export function HabitTracker() {
-  const { habits, data, setData, mode } = useOS();
-  const info = getMonthInfo();
+  const { habits, data, setData, mode, selectedMonth, selectedYear, setSelectedMonth } = useOS();
+  const info = getMonthInfo(new Date(selectedYear, selectedMonth, 1));
+  const today = new Date().getDate();
+  const isCurrentMonth = selectedMonth === new Date().getMonth() && selectedYear === new Date().getFullYear();
+
   const [hover, setHover] = useState<{ habitId: string; day: number; x: number; y: number } | null>(null);
   const [ripple, setRipple] = useState<{ key: string; id: number } | null>(null);
 
@@ -48,12 +51,31 @@ export function HabitTracker() {
     update({ ...data, meta: { ...data.meta, [day]: { ...data.meta[day], mood } } });
   };
 
+  const goToPrevMonth = () => {
+    const d = new Date(selectedYear, selectedMonth - 1, 1);
+    setSelectedMonth(d.getMonth(), d.getFullYear());
+  };
+
+  const goToNextMonth = () => {
+    const next = new Date(selectedYear, selectedMonth + 1, 1);
+    // Don't allow navigating past current month
+    const now = new Date();
+    if (next.getFullYear() > now.getFullYear() || (next.getFullYear() === now.getFullYear() && next.getMonth() > now.getMonth())) return;
+    setSelectedMonth(next.getMonth(), next.getFullYear());
+  };
+
+  const isNextDisabled = (() => {
+    const now = new Date();
+    return selectedYear > now.getFullYear() || (selectedYear === now.getFullYear() && selectedMonth >= now.getMonth());
+  })();
+
+  const hasData = Object.keys(data.cells).length > 0;
+
   const hoveredHabit = hover ? habits.find(h => h.id === hover.habitId) : null;
   const hoveredDay = hover ? info.days.find(d => d.day === hover.day) : null;
   const hoveredState = hover ? (data.cells[`${hover.habitId}:${hover.day}`] ?? 0) : 0;
   const hoveredMood = hover ? data.meta[hover.day]?.mood : null;
 
-  // Compute Tooltip values
   const tooltipStats = hoveredHabit && hoveredDay
     ? getTooltipInsights(hoveredHabit.id, hoveredDay.day, hoveredState, hoveredMood ?? null, hoveredDay.isWeekend, hoveredHabit.label)
     : null;
@@ -74,137 +96,181 @@ export function HabitTracker() {
             <span className="text-muted-foreground/70">{info.year}</span>
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {info.daysInMonth} days · click to cycle <span className="text-emerald-300">done</span> → <span className="text-amber-300">partial</span> → <span className="text-rose-300">missed</span>
+            {info.daysInMonth} days · click to cycle{" "}
+            <span className="text-emerald-300">done</span> → <span className="text-amber-300">partial</span> → <span className="text-rose-300">missed</span>
           </p>
         </div>
-        <div className="hidden gap-3 text-xs text-muted-foreground md:flex">
-          <Legend color="bg-emerald-400/80" label="Done" />
-          <Legend color="bg-amber-400/80" label="Partial" />
-          <Legend color="bg-rose-400/80" label="Missed" />
+
+        <div className="flex flex-col items-end gap-3">
+          {/* Month navigation */}
+          <div className="flex items-center gap-1 rounded-xl bg-white/[0.03] ring-1 ring-border/50 p-1">
+            <button
+              onClick={goToPrevMonth}
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-white/[0.06] hover:text-foreground transition-colors"
+              title="Previous month"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <div className="px-2 text-[11px] font-medium text-foreground/80 min-w-[100px] text-center">
+              {info.monthName} {info.year}
+              {isCurrentMonth && <span className="ml-1 text-[9px] text-primary font-bold uppercase tracking-wide">Now</span>}
+            </div>
+            <button
+              onClick={goToNextMonth}
+              disabled={isNextDisabled}
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-white/[0.06] hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Next month"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Legend */}
+          <div className="hidden gap-3 text-xs text-muted-foreground md:flex">
+            <Legend color="bg-emerald-400/80" label="Done" />
+            <Legend color="bg-amber-400/80" label="Partial" />
+            <Legend color="bg-rose-400/80" label="Missed" />
+          </div>
         </div>
       </div>
 
-      <div className="relative overflow-x-auto scrollbar-thin">
-        <table className="w-full border-separate border-spacing-0 text-xs">
-          <thead>
-            <tr>
-              <th className="sticky left-0 z-30 w-[240px] bg-card/95 px-3 py-2 text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground backdrop-blur border-b border-border/40">Routine</th>
-              {info.weekGroups.map((w) => (
-                <th key={w.week} colSpan={w.end - w.start + 1}
-                  className="border-l border-b border-border/40 bg-white/[0.02] px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  Week {w.week}
-                </th>
+      {/* Empty state for months with no data */}
+      {!isCurrentMonth && !hasData ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="rounded-xl bg-white/[0.02] border border-border/40 p-6 max-w-xs">
+            <div className="text-3xl mb-3">📭</div>
+            <div className="text-[13px] font-medium text-foreground/80">No data for {info.monthName} {info.year}</div>
+            <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed">
+              Checklist data from this month hasn't been recorded yet. Navigate to the current month to start tracking.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="relative overflow-x-auto scrollbar-thin">
+          <table className="w-full border-separate border-spacing-0 text-xs">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-30 w-[240px] bg-card/95 px-3 py-2 text-left text-[10px] uppercase tracking-[0.16em] text-muted-foreground backdrop-blur border-b border-border/40">Routine</th>
+                {info.weekGroups.map((w) => (
+                  <th key={w.week} colSpan={w.end - w.start + 1}
+                    className="border-l border-b border-border/40 bg-white/[0.02] px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    Week {w.week}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                <th className="sticky left-0 z-30 bg-card/95 px-3 py-1 text-left text-[10px] uppercase text-muted-foreground backdrop-blur border-b border-border/40">Day</th>
+                {info.days.map((d) => (
+                  <th key={`wd-${d.day}`}
+                    className={cn("grid-cell w-9 px-0 py-1 text-center text-[10px] font-medium uppercase border-b border-border/40",
+                      d.isWeekend ? "text-primary/70" : "text-muted-foreground/80",
+                      d.isToday && "bg-primary/15 text-foreground")}>{d.weekday.charAt(0)}</th>
+                ))}
+              </tr>
+              <tr>
+                <th className="sticky left-0 z-30 bg-card/95 px-3 py-1 text-left text-[10px] uppercase text-muted-foreground backdrop-blur border-b border-border/40">Date</th>
+                {info.days.map((d) => (
+                  <th key={`dt-${d.day}`}
+                    className={cn("grid-cell w-9 px-0 py-1 text-center text-[11px] font-mono font-semibold border-b border-border/40",
+                      d.isToday ? "bg-primary text-primary-foreground accent-glow" : "bg-card/50 text-foreground/80")}>{d.day}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {habits.map((h: Habit, idx: number) => (
+                <tr key={h.id} className="group">
+                  <td className={cn("sticky left-0 z-20 border-t border-border/40 px-3 py-1.5 backdrop-blur",
+                    idx % 2 === 0 ? "bg-card/95" : "bg-card/80")}>
+                    <div className="flex items-center gap-2.5">
+                      {/* Sequence number instead of time */}
+                      <span className="text-[10px] font-mono font-bold text-primary/60 tabular-nums w-5 shrink-0">
+                        {String(idx + 1).padStart(2, "0")}
+                      </span>
+                      <span className="text-[13px] font-medium leading-tight text-foreground/95">{h.label}</span>
+                    </div>
+                  </td>
+                  {info.days.map((d) => {
+                    const key = `${h.id}:${d.day}`;
+                    const state = data.cells[key] ?? 0;
+
+                    // Streak calculation
+                    const hasLeftDone = d.day > 1 && (data.cells[`${h.id}:${d.day - 1}`] === 1);
+                    const hasRightDone = d.day < info.daysInMonth && (data.cells[`${h.id}:${d.day + 1}`] === 1);
+
+                    // Dynamic heat intensity & glows depending on mode
+                    let activeClass = "";
+                    if (state === 1) {
+                      activeClass = mode === "operator"
+                        ? "bg-emerald-500/18 shadow-[inset_0_0_8px_color-mix(in_oklab,var(--primary)_15%,transparent)]"
+                        : mode === "recovery"
+                        ? "bg-amber-500/18"
+                        : "bg-emerald-500/12";
+                    } else if (state === 2) {
+                      activeClass = "bg-amber-500/12";
+                    } else if (state === 3) {
+                      activeClass = "bg-rose-500/12";
+                    }
+
+                    return (
+                      <td key={key}
+                        className={cn("grid-cell relative h-9 w-9 cursor-pointer p-0 text-center transition-all duration-300",
+                          d.isWeekend && "bg-primary/[0.025]",
+                          d.isToday && "bg-primary/[0.08]",
+                          activeClass,
+                          "hover:bg-primary/20 hover:shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_55%,transparent)]")}
+                        onClick={() => toggle(h.id, d.day)}
+                        onMouseEnter={(e) => {
+                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setHover({ habitId: h.id, day: d.day, x: r.left + r.width/2, y: r.top });
+                        }}
+                        onMouseLeave={() => setHover(null)}>
+
+                        {/* Streak connector paths overlay */}
+                        {state === 1 && hasLeftDone && <div className="streak-connector-left" />}
+                        {state === 1 && hasRightDone && <div className="streak-connector-right" />}
+
+                        <div className="relative flex h-full w-full items-center justify-center z-10">
+                          <AnimatePresence mode="wait">
+                            <CellIcon key={state} state={state} />
+                          </AnimatePresence>
+                          {ripple?.key === key && (
+                            <motion.span key={ripple.id}
+                              initial={{ scale: 0, opacity: 0.6 }} animate={{ scale: 3, opacity: 0 }}
+                              transition={{ duration: 0.7, ease: "easeOut" }}
+                              onAnimationComplete={() => setRipple(null)}
+                              className="pointer-events-none absolute inset-0 rounded-full bg-primary/45" />
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
               ))}
-            </tr>
-            <tr>
-              <th className="sticky left-0 z-30 bg-card/95 px-3 py-1 text-left text-[10px] uppercase text-muted-foreground backdrop-blur border-b border-border/40">Day</th>
-              {info.days.map((d) => (
-                <th key={`wd-${d.day}`}
-                  className={cn("grid-cell w-9 px-0 py-1 text-center text-[10px] font-medium uppercase border-b border-border/40",
-                    d.isWeekend ? "text-primary/70" : "text-muted-foreground/80",
-                    d.isToday && "bg-primary/15 text-foreground")}>{d.weekday.charAt(0)}</th>
-              ))}
-            </tr>
-            <tr>
-              <th className="sticky left-0 z-30 bg-card/95 px-3 py-1 text-left text-[10px] uppercase text-muted-foreground backdrop-blur border-b border-border/40">Date</th>
-              {info.days.map((d) => (
-                <th key={`dt-${d.day}`}
-                  className={cn("grid-cell w-9 px-0 py-1 text-center text-[11px] font-mono font-semibold border-b border-border/40",
-                    d.isToday ? "bg-primary text-primary-foreground accent-glow" : "bg-card/50 text-foreground/80")}>{d.day}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {habits.map((h: Habit, idx: number) => (
-              <tr key={h.id} className="group">
-                <td className={cn("sticky left-0 z-20 border-t border-border/40 px-3 py-1.5 backdrop-blur",
-                  idx % 2 === 0 ? "bg-card/95" : "bg-card/80")}>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-mono text-muted-foreground/80">{h.time}</span>
-                    <span className="text-[13px] font-medium leading-tight text-foreground/95">{h.label}</span>
-                  </div>
-                </td>
+              <tr>
+                <td className="sticky left-0 z-20 border-t border-border/60 bg-card/95 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground backdrop-blur">Mood</td>
                 {info.days.map((d) => {
-                  const key = `${h.id}:${d.day}`;
-                  const state = data.cells[key] ?? 0;
-                  
-                  // Streak calculation
-                  const hasLeftDone = d.day > 1 && (data.cells[`${h.id}:${d.day - 1}`] === 1);
-                  const hasRightDone = d.day < info.daysInMonth && (data.cells[`${h.id}:${d.day + 1}`] === 1);
-
-                  // Dynamic heat intensity & glows depending on mode
-                  let activeClass = "";
-                  if (state === 1) {
-                    activeClass = mode === "operator" 
-                      ? "bg-emerald-500/18 shadow-[inset_0_0_8px_color-mix(in_oklab,var(--primary)_15%,transparent)]"
-                      : mode === "recovery"
-                      ? "bg-amber-500/18"
-                      : "bg-emerald-500/12";
-                  } else if (state === 2) {
-                    activeClass = "bg-amber-500/12";
-                  } else if (state === 3) {
-                    activeClass = "bg-rose-500/12";
-                  }
-
+                  const mood = data.meta[d.day]?.mood ?? null;
                   return (
-                    <td key={key}
-                      className={cn("grid-cell relative h-9 w-9 cursor-pointer p-0 text-center transition-all duration-300",
-                        d.isWeekend && "bg-primary/[0.025]",
-                        d.isToday && "bg-primary/[0.08]",
-                        activeClass,
-                        "hover:bg-primary/20 hover:shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_55%,transparent)]")}
-                      onClick={() => toggle(h.id, d.day)}
-                      onMouseEnter={(e) => {
-                        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                        setHover({ habitId: h.id, day: d.day, x: r.left + r.width/2, y: r.top });
-                      }}
-                      onMouseLeave={() => setHover(null)}>
-                      
-                      {/* Streak connector paths overlay */}
-                      {state === 1 && hasLeftDone && <div className="streak-connector-left" />}
-                      {state === 1 && hasRightDone && <div className="streak-connector-right" />}
-
-                      <div className="relative flex h-full w-full items-center justify-center z-10">
-                        <AnimatePresence mode="wait">
-                          <CellIcon key={state} state={state} />
-                        </AnimatePresence>
-                        {ripple?.key === key && (
-                          <motion.span key={ripple.id}
-                            initial={{ scale: 0, opacity: 0.6 }} animate={{ scale: 3, opacity: 0 }}
-                            transition={{ duration: 0.7, ease: "easeOut" }}
-                            onAnimationComplete={() => setRipple(null)}
-                            className="pointer-events-none absolute inset-0 rounded-full bg-primary/45" />
-                        )}
-                      </div>
+                    <td key={`m-${d.day}`} className="grid-cell h-8 w-9 p-0 border-t border-border/40">
+                      <button type="button"
+                        onClick={() => {
+                          const next: Mood = mood === "great" ? "ok" : mood === "ok" ? "low" : mood === "low" ? null : "great";
+                          setMood(d.day, next);
+                        }}
+                        className="flex h-full w-full items-center justify-center hover:bg-primary/15"
+                        aria-label={`Mood for day ${d.day}`}>
+                        {mood === "great" && <Smile className="h-3.5 w-3.5 text-emerald-300" />}
+                        {mood === "ok" && <Meh className="h-3.5 w-3.5 text-amber-300" />}
+                        {mood === "low" && <Moon className="h-3.5 w-3.5 text-indigo-300" />}
+                      </button>
                     </td>
                   );
                 })}
               </tr>
-            ))}
-            <tr>
-              <td className="sticky left-0 z-20 border-t border-border/60 bg-card/95 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground backdrop-blur">Mood</td>
-              {info.days.map((d) => {
-                const mood = data.meta[d.day]?.mood ?? null;
-                return (
-                  <td key={`m-${d.day}`} className="grid-cell h-8 w-9 p-0 border-t border-border/40">
-                    <button type="button"
-                      onClick={() => {
-                        const next: Mood = mood === "great" ? "ok" : mood === "ok" ? "low" : mood === "low" ? null : "great";
-                        setMood(d.day, next);
-                      }}
-                      className="flex h-full w-full items-center justify-center hover:bg-primary/15"
-                      aria-label={`Mood for day ${d.day}`}>
-                      {mood === "great" && <Smile className="h-3.5 w-3.5 text-emerald-300" />}
-                      {mood === "ok" && <Meh className="h-3.5 w-3.5 text-amber-300" />}
-                      {mood === "low" && <Moon className="h-3.5 w-3.5 text-indigo-300" />}
-                    </button>
-                  </td>
-                );
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Glassmorphic Hover Intelligence Tooltip */}
       <AnimatePresence>
@@ -220,10 +286,12 @@ export function HabitTracker() {
               <span>{hoveredDay.weekdayLong}, Day {hoveredDay.day}</span>
               <span className="flex items-center gap-1 text-primary font-bold"><Sparkles className="h-2.5 w-2.5" /> AI Insight</span>
             </div>
-            
+
             <div className="mt-2 text-[13px] font-semibold text-foreground leading-tight">{hoveredHabit.label}</div>
-            <div className="text-[10px] font-mono text-muted-foreground mt-0.5">{hoveredHabit.time}</div>
-            
+            <div className="text-[9px] text-muted-foreground mt-0.5 font-mono">
+              Routine #{habits.findIndex(h => h.id === hoveredHabit.id) + 1}
+            </div>
+
             <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
               <Stat label="Status" value={["empty","done","partial","missed"][hoveredState]} />
               <Stat label="Mood State" value={hoveredMood ? `${hoveredMood} (${tooltipStats.moodDesc})` : "—"} />
