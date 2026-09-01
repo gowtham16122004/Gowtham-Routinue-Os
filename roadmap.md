@@ -1,0 +1,5 @@
+- [ ] Update Routine OS shell drawers and branding
+- [ ] Add month selection with persisted historical checklist loading
+- [ ] Add focused checklist overlay and hero entry point
+- [ ] Remove routine clock ranges from visible routine surfaces
+- [ ] Validate preview behavior and metadata

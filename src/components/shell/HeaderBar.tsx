@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useOS } from "@/lib/os-store";
 
 export function HeaderBar() {
-  const { setCmdOpen, focusMode, setFocusMode, mode, setMode, rightPanel, setRightPanel } = useOS();
+  const { setCmdOpen, focusMode, setFocusMode, mode, setMode, rightPanel, setRightPanel, sidebarCollapsed, setSidebarCollapsed } = useOS();
   const [time, setTime] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 30_000);
@@ -19,9 +19,9 @@ export function HeaderBar() {
       className="sticky top-3 z-30 mx-3 mb-4 flex items-center gap-2 rounded-2xl glass-strong ring-soft px-2.5 py-2"
     >
       {/* Workspace switcher */}
-      <button className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/[0.04]">
+      <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/[0.04]">
         <span className="grid h-5 w-5 place-items-center rounded-md bg-primary/15 ring-1 ring-primary/30 text-[10px] font-bold text-primary">R</span>
-        <span className="hidden sm:inline">Operator</span>
+        <span className="hidden sm:inline">Routine OS</span>
         <ChevronDown className="h-3 w-3 opacity-60" />
       </button>
 
@@ -94,10 +94,11 @@ export function HeaderBar() {
 
       <button
         onClick={() => setRightPanel(!rightPanel)}
-        className={`hidden lg:grid h-7 w-7 place-items-center rounded-lg ${rightPanel ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-white/[0.04]"}`}
+        className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium ${rightPanel ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-white/[0.04]"}`}
         title="Toggle context panel"
       >
         <Sparkles className="h-3.5 w-3.5" />
+        <span className="hidden lg:inline">Context</span>
       </button>
 
       <div className="hidden xl:flex items-center gap-2 px-2 text-[10.5px] text-muted-foreground border-l border-border/60">

@@ -48,9 +48,9 @@ export function Sidebar() {
 
   return (
     <motion.aside
-      animate={{ width: collapsed ? 68 : 248 }}
+      animate={{ x: collapsed ? -270 : 0, opacity: collapsed ? 0 : 1 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      className="relative z-20 shrink-0"
+      className="fixed inset-y-3 left-3 z-50 w-[248px]"
     >
       <div className="sticky top-4 ml-3 mt-3 h-[calc(100vh-1.5rem)] overflow-hidden rounded-2xl glass-strong ring-soft flex flex-col">
         {/* Brand */}
@@ -62,7 +62,7 @@ export function Sidebar() {
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <div className="font-display text-[13px] font-semibold tracking-tight">Routine OS</div>
-              <div className="text-[10px] text-muted-foreground">Operator Workspace</div>
+              <div className="text-[10px] text-muted-foreground">Personal Operating System</div>
             </div>
           )}
           <button
