@@ -65,6 +65,11 @@ interface OSState {
   setRightPanel: (o: boolean) => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (o: boolean) => void;
+  checklistMode: boolean;
+  setChecklistMode: (o: boolean) => void;
+  selectedMonth: number;
+  selectedYear: number;
+  setSelectedMonth: (month: number, year: number) => void;
   mode: "operator" | "deep" | "recovery";
   setMode: (m: "operator" | "deep" | "recovery") => void;
 
@@ -152,8 +157,11 @@ export function OSProvider({ children }: { children: ReactNode }) {
   const [data, setDataState] = useState<MonthData>({ cells: {}, meta: {} });
   const [cmdOpen, setCmdOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
-  const [rightPanel, setRightPanel] = useState(true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [rightPanel, setRightPanel] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [checklistMode, setChecklistMode] = useState(false);
+  const [selectedMonth, setSelectedMonthState] = useState(info.month);
+  const [selectedYear, setSelectedYear] = useState(info.year);
   const [mode, setMode] = useState<"operator" | "deep" | "recovery">("operator");
 
   // Session display state (derived from timestamp refs, updated by ticker)
@@ -192,11 +200,12 @@ export function OSProvider({ children }: { children: ReactNode }) {
   const statusRef     = useRef<SessionStatus>("idle");
   const activeRef     = useRef<SessionType | null>(null);
   const notesRef      = useRef(sessionNotes);
-  const infoRef       = useRef(info);
+  const selectedInfo = getMonthInfo(new Date(selectedYear, selectedMonth, 1));
+  const infoRef       = useRef(selectedInfo);
   const tickerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { notesRef.current = sessionNotes; }, [sessionNotes]);
-  useEffect(() => { infoRef.current = info; }, [info]);
+  useEffect(() => { infoRef.current = selectedInfo; }, [selectedInfo]);
 
   // Forward-declared so endSession can call it and vice-versa through a ref
   const endSessionRef = useRef<(cancel?: boolean) => void>(() => {});
@@ -232,16 +241,22 @@ export function OSProvider({ children }: { children: ReactNode }) {
   // ── data loaders ──
   useEffect(() => {
     setHabitsState(loadHabits());
-    setDataState(loadMonth(info.year, info.month));
-  }, [info.year, info.month]);
+    setDataState(loadMonth(selectedYear, selectedMonth));
+  }, [selectedYear, selectedMonth]);
 
   const setHabits = useCallback((h: Habit[]) => {
     setHabitsState(h); saveHabits(h);
   }, []);
 
   const setData = useCallback((d: MonthData) => {
-    setDataState(d); saveMonth(info.year, info.month, d);
-  }, [info.year, info.month]);
+    setDataState(d); saveMonth(selectedYear, selectedMonth, d);
+  }, [selectedYear, selectedMonth]);
+
+  const setSelectedMonth = useCallback((month: number, year: number) => {
+    const normalized = new Date(year, month, 1);
+    setSelectedMonthState(normalized.getMonth());
+    setSelectedYear(normalized.getFullYear());
+  }, []);
 
   const setSessionNotes = useCallback((notes: string) => {
     setSessionNotesState(notes);
@@ -636,6 +651,7 @@ export function OSProvider({ children }: { children: ReactNode }) {
       view, setView, habits, setHabits, data, setData,
       cmdOpen, setCmdOpen, focusMode, setFocusMode,
       rightPanel, setRightPanel, sidebarCollapsed, setSidebarCollapsed,
+      checklistMode, setChecklistMode, selectedMonth, selectedYear, setSelectedMonth,
       mode, setMode,
       activeSession, sessionStatus, sessionSeconds, sessionDuration,
       sessionNotes, setSessionNotes,

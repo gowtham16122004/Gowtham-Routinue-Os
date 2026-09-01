@@ -106,7 +106,7 @@ export function ContextPanel() {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 20 }}
           transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="hidden xl:block w-[320px] shrink-0"
+          className="fixed inset-y-3 right-3 z-50 w-[min(320px,calc(100vw-1.5rem))]"
         >
           <div className="sticky top-4 mr-3 mt-3 h-[calc(100vh-1.5rem)] overflow-y-auto scrollbar-thin rounded-2xl glass-strong ring-soft p-4 space-y-4 border border-border/40">
             {/* Header */}
