@@ -1,82 +1,82 @@
 import { motion } from "framer-motion";
-import { Brain, TrendingUp, AlertTriangle, Target, Clock, Lightbulb, Flame, Heart, Zap, Sparkles } from "lucide-react";
+import { Brain, TrendingUp, TrendingDown, AlertTriangle, Trophy, Users, Lightbulb, Minus } from "lucide-react";
 import { useMemo } from "react";
-import { getMonthInfo } from "@/lib/habits";
 import { useOS } from "@/lib/os-store";
+import {
+  getStrongestRoutine,
+  getWeakestRoutine,
+  getConsistencyTrend,
+  getBestCombination,
+} from "@/lib/analytics";
 
 export function InsightsPanel() {
-  const { habits, data, aiInsights } = useOS();
-  const info = useMemo(() => getMonthInfo(), []);
+  const { habits, data } = useOS();
   const today = new Date().getDate();
 
-  const insights = useMemo(() => {
-    const counts: Record<string, number> = {};
-    habits.forEach(h => { counts[h.id] = 0; });
-    const perDay: number[] = Array(info.daysInMonth + 1).fill(0);
-    for (let d = 1; d <= today; d++) {
-      habits.forEach(h => { if (data.cells[`${h.id}:${d}`] === 1) { counts[h.id]++; perDay[d]++; } });
+  const hasAnyData = useMemo(() => {
+    for (const h of habits) {
+      for (let d = 1; d <= today; d++) {
+        if (data.cells[`${h.id}:${d}`] === 1) return true;
+      }
     }
+    return false;
+  }, [habits, data, today]);
 
-    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-    const best = habits.find(h => h.id === sorted[0]?.[0]);
-    const worst = habits.find(h => h.id === sorted[sorted.length-1]?.[0]);
+  const strongest = useMemo(() => getStrongestRoutine(habits, data, today, 7), [habits, data, today]);
+  const weakest   = useMemo(() => getWeakestRoutine(habits, data, today, 7), [habits, data, today]);
+  const trend     = useMemo(() => getConsistencyTrend(habits, data, today), [habits, data, today]);
+  const combo     = useMemo(() => getBestCombination(habits, data, today, 14), [habits, data, today]);
 
-    const last5 = perDay.slice(Math.max(1, today-4), today+1);
-    const avg = last5.reduce((a,b)=>a+b,0)/Math.max(1,last5.length);
-    const lowCycle = avg < habits.length * 0.4;
-
-    const morningId = habits[0]?.id;
-    const morningCount = morningId ? perDay.slice(1, today+1).filter((_,i)=>data.cells[`${morningId}:${i+1}`]===1).length : 0;
-    const morningPct = Math.round((morningCount / Math.max(1, today)) * 100);
-
-    const list = [
-      { icon: Clock, tone: "primary" as const, title: "Peak performance window",
-        body: `Your morning anchor completes ${morningPct}% of the time. Schedule your hardest work here.` },
-      { icon: Target, tone: "primary" as const, title: "Strongest pattern",
-        body: `${best?.label ?? "—"} is your most consistent habit. Use it as the anchor that triggers the rest.` },
-      { icon: AlertTriangle, tone: lowCycle ? "warn" : "muted" as const,
-        title: lowCycle ? "Low-energy cycle forming" : "Distraction watch",
-        body: lowCycle
-          ? "Three of the last five days dipped below 40%. Protect sleep, drop one optional block tomorrow."
-          : `${worst?.label ?? "Weakest block"} is below average. Move it earlier in the day before willpower decays.` },
-    ];
-
-    // Merge in any deep AI correlations from session history
-    const filteredAi = aiInsights.filter(insight => insight.id !== "onboarding");
-    if (filteredAi.length > 0) {
-      filteredAi.forEach(ai => {
-        let icon = Sparkles;
-        let tone: "good" | "warn" | "primary" | "muted" = "primary";
-        if (ai.category === "burnout") { icon = AlertTriangle; tone = "warn"; }
-        if (ai.category === "recovery") { icon = Heart; tone = "good"; }
-        if (ai.category === "momentum") { icon = Flame; tone = "good"; }
-        if (ai.category === "timing") { icon = Clock; tone = "primary"; }
-
-        list.push({
-          icon,
-          tone,
-          title: `AI Correlation · ${ai.category}`,
-          body: ai.message
-        });
-      });
-    } else {
-      // Fallback standard correlations if no session data yet
-      list.push(
-        { icon: TrendingUp, tone: "good" as const, title: "Behavioral correlation",
-          body: "Active-fitness days correlate with stronger evening focus. Stack workout before cognitive work." },
-        { icon: Lightbulb, tone: "primary" as const, title: "Optimization suggestion",
-          body: "Pair your weakest habit with a strong anchor — paired execution increases retention by ~18%." }
-      );
+  // AI Recommendation — derived from actual weakest routine
+  const recommendation = useMemo(() => {
+    if (!weakest) return null;
+    if (weakest.pct === 0) {
+      return {
+        title: "Start with consistency",
+        body: `"${weakest.habit.label}" has not been completed this week. Try completing it just once today to build initial momentum.`,
+      };
     }
+    if (weakest.pct < 50) {
+      return {
+        title: `Strengthen your weakest routine`,
+        body: `"${weakest.habit.label}" was completed ${weakest.count} of ${weakest.total} days. Focus on this before adding anything new.`,
+      };
+    }
+    if (strongest && strongest.pct >= 80) {
+      return {
+        title: "Anchor weaker habits to strong ones",
+        body: `Use "${strongest.habit.label}" as an anchor. Complete it first, then immediately move to a routine you've been skipping.`,
+      };
+    }
+    return {
+      title: "Maintain your current pace",
+      body: `Your routines are progressing. Keep your current schedule and watch your consistency score rise.`,
+    };
+  }, [weakest, strongest]);
 
-    return list.slice(0, 6); // Limit to maximum 6 insights
-  }, [data, habits, info.daysInMonth, today, aiInsights]);
+  // Consistency pattern text
+  const trendText = useMemo(() => {
+    switch (trend) {
+      case "improving":
+        return "Your completion is becoming more consistent across days. The upward pattern is clear.";
+      case "declining":
+        return "Completion has dipped compared to your earlier days this month. One solid day resets the curve.";
+      case "stable":
+        return "Your completion rate is holding steady. Consistency is building quietly.";
+      case "insufficient":
+        return null; // Don't show this card yet
+    }
+  }, [trend]);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+    <motion.div
+      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.15 }}
-      className="glass relative overflow-hidden rounded-2xl p-6">
+      className="glass relative overflow-hidden rounded-2xl p-6 border border-border/40"
+    >
       <div className="light-streak" style={{ top: "30%", left: "-10%", width: "120%", height: 1 }} />
+
+      {/* Header */}
       <div className="relative mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 ring-1 ring-primary/30">
@@ -84,34 +84,149 @@ export function InsightsPanel() {
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Behavioral Intelligence</div>
-            <h3 className="text-[15px] font-semibold tracking-tight">Patterns the AI detected this week</h3>
+            <h3 className="text-[15px] font-semibold tracking-tight">Patterns detected from your routine history</h3>
           </div>
         </div>
         <span className="hidden items-center gap-1.5 rounded-full bg-white/[0.04] px-2.5 py-1 text-[10px] text-muted-foreground ring-1 ring-border/60 sm:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary pulse-dot" /> Live · scanning {today} days
+          <span className="h-1.5 w-1.5 rounded-full bg-primary pulse-dot" />
+          {hasAnyData ? `Scanning ${today} days` : "Awaiting data"}
         </span>
       </div>
-      <div className="relative grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {insights.map((it, i) => (
-          <motion.div key={it.title}
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 * i }}
-            className="glass-hover group relative overflow-hidden rounded-xl bg-white/[0.015] p-4 ring-1 ring-border/40">
-            <div className="flex items-start gap-3">
-              <div className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ring-1 ${
-                it.tone === "good" ? "bg-emerald-400/10 ring-emerald-400/30 text-emerald-300" :
-                it.tone === "warn" ? "bg-amber-400/10 ring-amber-400/30 text-amber-300" :
-                it.tone === "muted" ? "bg-white/[0.04] ring-border/60 text-muted-foreground" :
-                "bg-primary/10 ring-primary/30 text-primary"}`}>
-                <it.icon className="h-3.5 w-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-medium leading-tight text-foreground">{it.title}</p>
-                <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">{it.body}</p>
-              </div>
-            </div>
-          </motion.div>
-        ))}
+
+      {/* Empty state */}
+      {!hasAnyData && (
+        <div className="relative rounded-xl bg-white/[0.015] ring-1 ring-border/40 p-6 text-center">
+          <Brain className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
+          <p className="text-[13px] font-medium text-muted-foreground">No routine data yet.</p>
+          <p className="mt-1 text-[12px] text-muted-foreground/60">
+            Complete a few routines in your checklist to unlock behavioral insights.
+          </p>
+        </div>
+      )}
+
+      {/* Insight cards */}
+      {hasAnyData && (
+        <div className="relative grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+
+          {/* CARD 1 — Strongest Habit */}
+          {strongest && (
+            <InsightCard
+              icon={Trophy}
+              tone="good"
+              title="Strongest Habit"
+              badge={strongest.habit.label}
+            >
+              Completed <strong>{strongest.count} of {strongest.total}</strong> days this week ({strongest.pct}%).
+              {strongest.pct >= 80
+                ? " This is your most reliable routine — protect it."
+                : " Currently your top performer."}
+            </InsightCard>
+          )}
+
+          {/* CARD 2 — Needs Attention */}
+          {weakest && weakest.habit.id !== strongest?.habit.id && (
+            <InsightCard
+              icon={AlertTriangle}
+              tone={weakest.pct < 30 ? "warn" : "muted"}
+              title="Needs Attention"
+              badge={weakest.habit.label}
+            >
+              Completed <strong>{weakest.count} of {weakest.total}</strong> days this week ({weakest.pct}%).
+              {weakest.pct === 0
+                ? " Not started this week — begin here."
+                : " This is your least consistent routine right now."}
+            </InsightCard>
+          )}
+
+          {/* CARD 3 — Consistency Pattern */}
+          {trendText && (
+            <InsightCard
+              icon={trend === "improving" ? TrendingUp : trend === "declining" ? TrendingDown : Minus}
+              tone={trend === "improving" ? "good" : trend === "declining" ? "warn" : "muted"}
+              title="Consistency Pattern"
+            >
+              {trendText}
+            </InsightCard>
+          )}
+
+          {/* CARD 4 — Best Combination */}
+          {combo && (
+            <InsightCard
+              icon={Users}
+              tone="primary"
+              title="Best Combination"
+              badge={`${combo.habitA.label} + ${combo.habitB.label}`}
+            >
+              These two routines were completed on the same day <strong>{combo.coOccurrences} times</strong> in the last {combo.window} days — your strongest pairing.
+            </InsightCard>
+          )}
+
+          {/* CARD 5 — AI Recommendation */}
+          {recommendation && (
+            <InsightCard
+              icon={Lightbulb}
+              tone="primary"
+              title={recommendation.title}
+            >
+              {recommendation.body}
+            </InsightCard>
+          )}
+
+          {/* Low data fallback — only when very few data points */}
+          {today < 4 && (
+            <InsightCard
+              icon={Brain}
+              tone="muted"
+              title="More patterns coming"
+            >
+              Keep tracking. Behavioral patterns become visible as your history grows over the next few days.
+            </InsightCard>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── InsightCard ─────────────────────────────────────────────────────────────
+
+function InsightCard({
+  icon: Icon,
+  tone,
+  title,
+  badge,
+  children,
+}: {
+  icon: React.ElementType;
+  tone: "good" | "warn" | "primary" | "muted";
+  title: string;
+  badge?: string;
+  children: React.ReactNode;
+}) {
+  const iconCls =
+    tone === "good"    ? "bg-emerald-400/10 ring-emerald-400/30 text-emerald-300" :
+    tone === "warn"    ? "bg-amber-400/10 ring-amber-400/30 text-amber-300" :
+    tone === "muted"   ? "bg-white/[0.04] ring-border/60 text-muted-foreground" :
+                         "bg-primary/10 ring-primary/30 text-primary";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      className="glass-hover group relative overflow-hidden rounded-xl bg-white/[0.015] p-4 ring-1 ring-border/40"
+    >
+      <div className="flex items-start gap-3">
+        <div className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ring-1 ${iconCls}`}>
+          <Icon className="h-3.5 w-3.5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12.5px] font-medium leading-tight text-foreground">{title}</p>
+          {badge && (
+            <p className="mt-1 inline-flex items-center rounded-full bg-white/[0.04] px-2 py-0.5 text-[10.5px] font-medium text-foreground/80 ring-1 ring-border/40">
+              {badge}
+            </p>
+          )}
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">{children}</p>
+        </div>
       </div>
     </motion.div>
   );
